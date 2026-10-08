@@ -9,7 +9,7 @@ from app.config import Settings
 from app.main import create_app
 
 DB_URL = os.environ.get("FS_TEST_DATABASE_URL", "postgresql://postgres@localhost:5432/fs_test")
-TABLES = "applied_op, audit_log, action_item, evidence_file, blob_object, answer, dimension_scope, evaluation, device, app_user"
+TABLES = "auth_token, pairing_code, applied_op, audit_log, action_item, evidence_file, blob_object, answer, dimension_scope, evaluation, device, app_user"
 
 
 @pytest.fixture(scope="session")

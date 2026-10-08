@@ -1,4 +1,4 @@
-"""Identidad del usuario a partir del token. Producción: Microsoft Entra ID (OIDC, RS256)."""
+"""Identidad del usuario a partir del token: Microsoft Entra ID (OIDC, RS256), modo local o desarrollo."""
 
 from dataclasses import dataclass
 
@@ -24,14 +24,19 @@ class Authenticator:
             if not (s.entra_tenant_id and s.entra_audience):
                 raise RuntimeError("FS_AUTH_MODE=entra requiere FS_ENTRA_TENANT_ID y FS_ENTRA_AUDIENCE")
             self._jwks = jwt.PyJWKClient(f"https://login.microsoftonline.com/{s.entra_tenant_id}/discovery/v2.0/keys", cache_keys=True)
-        elif s.auth_mode != "dev":
+        elif s.auth_mode not in ("dev", "local"):
             raise RuntimeError(f"FS_AUTH_MODE desconocido: {s.auth_mode}")
 
-    def __call__(self, request: Request) -> User:
+    @staticmethod
+    def bearer(request: Request) -> str:
         h = request.headers.get("authorization", "")
-        if not h.lower().startswith("bearer "):
+        if not h.lower().startswith("bearer ") or not h[7:].strip():
             raise HTTPException(401, "Falta el token de acceso")
-        token = h[7:].strip()
+        return h[7:].strip()
+
+    def __call__(self, request: Request) -> User:
+        """Modos dev y entra. El modo local valida contra la base (ver local_auth)."""
+        token = self.bearer(request)
         if self.s.auth_mode == "dev":
             if not token.startswith("dev:") or len(token) < 5:
                 raise HTTPException(401, "Token de desarrollo inválido")

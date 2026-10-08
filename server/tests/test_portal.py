@@ -50,7 +50,7 @@ def test_invitation_becomes_the_account_on_first_login(client):
     assert next(u for u in users if u["email"] == "carla@vantaz.cl")["status"] == "invited"
     # En modo dev el correo del token es el propio usuario.
     me = client.get("/v1/me", headers=H("carla@vantaz.cl")).json()
-    assert me == {"id": "carla@vantaz.cl", "name": "Carla Rojas", "email": "carla@vantaz.cl", "role": "supervisor"}
+    assert {k: me[k] for k in ("id", "name", "email", "role")} == {"id": "carla@vantaz.cl", "name": "Carla Rojas", "email": "carla@vantaz.cl", "role": "supervisor"}
 
 
 def test_disabled_person_cannot_enter_or_sync(client):

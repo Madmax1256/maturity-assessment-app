@@ -62,3 +62,14 @@ jobs:
           npm run preview -w apps/portal -- --port 4174 --strictPort &
           for i in $(seq 1 30); do curl -sf http://localhost:4174/ >/dev/null && break; sleep 1; done
           node apps/portal/e2e/smoke.cjs
+      - name: Modo local, con el portal publicado por el servidor y la tablet vinculada con código
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE fs_local"
+          export FS_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fs_local
+          (cd server && python -c "import os; from app.admin_cli import create_admin; create_admin(os.environ['FS_DATABASE_URL'], 'max', 'Max', 'clave-admin-e2e')")
+          npm run build:tablet
+          npm run build:portal
+          (cd server && FS_AUTH_MODE=local FS_BLOB_DIR=$RUNNER_TEMP/blobs-local FS_PORTAL_DIR=../apps/portal/dist \
+            FS_CORS_ORIGINS=http://localhost:4173 python -m uvicorn app.main:create_app --factory --port 8100 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:8100/health >/dev/null && break; sleep 1; done
+          node e2e/local-mode.cjs

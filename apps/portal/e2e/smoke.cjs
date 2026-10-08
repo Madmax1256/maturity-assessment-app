@@ -14,7 +14,7 @@ const URL = process.env.PORTAL_URL || 'http://localhost:4174/';
   const ok = (c, m) => { console.log((c ? 'OK  ' : 'FAIL') + ' ' + m); if (!c) process.exitCode = 1; };
   const signIn = async (u) => {
     await page.goto(URL);
-    await page.fill('#dev-user', u);
+    await page.fill('#si-user', u);
     await page.getByRole('button', { name: 'Entrar' }).click();
     await page.locator('.top').waitFor();
   };
@@ -84,13 +84,13 @@ const URL = process.env.PORTAL_URL || 'http://localhost:4174/';
 
   // La persona sin acceso ya no entra.
   await page.getByRole('button', { name: 'Salir' }).click();
-  await page.fill('#dev-user', 'evaluador');
+  await page.fill('#si-user', 'evaluador');
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.getByText('Tu acceso a la aplicación fue retirado.').waitFor();
   ok(true, 'una cuenta sin acceso no puede entrar');
 
   // Un evaluador nuevo ve solo lo suyo y no ve administración.
-  await page.fill('#dev-user', 'pedro');
+  await page.fill('#si-user', 'pedro');
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.locator('.top').waitFor();
   ok(await page.locator('a.nav', { hasText: 'Usuarios' }).count() === 0, 'evaluador no ve administración');
