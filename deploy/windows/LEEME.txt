@@ -1,0 +1,67 @@
+DIAGNÓSTICO DE FATIGA Y SOMNOLENCIA: SERVIDOR EN ESTE COMPUTADOR
+================================================================
+
+Qué hace
+--------
+Instala en este computador el servidor que recibe lo que envían las tablets y el portal
+web para administrar usuarios y ver resultados. No necesita a TI ni cuentas Microsoft.
+Las tablets sincronizan por la red Wi-Fi cuando están en la misma red que este computador.
+
+Requisitos
+----------
+- Windows 10 u 11 de 64 bits, con conexión a internet durante la instalación.
+- Unos 1,5 GB libres.
+- La red Wi-Fi de la oficina marcada como "Privada" en Windows (Configuración > Red e
+  internet > Wi-Fi > propiedades de la red). En una red "Pública" Windows bloquea a las tablets.
+
+Instalar
+--------
+1. Descomprime el zip completo en cualquier carpeta (por ejemplo, Descargas).
+2. Haz doble clic en INSTALAR.cmd.
+   Si Windows muestra "Windows protegió su PC", elige "Más información" y "Ejecutar de todas formas".
+3. Elige la carpeta de respaldos (Enter acepta la propuesta; si usas OneDrive, queda ahí y
+   tienes una copia fuera del computador).
+4. Escribe tu usuario, tu nombre y una clave de al menos 10 caracteres. Con eso entras al portal.
+5. Windows pedirá permiso de administrador una vez, para abrir el puerto 8000 a las tablets.
+Al terminar, el instalador muestra la dirección que hay que escribir en las tablets
+(por ejemplo 192.168.1.20:8000) y deja en el escritorio el acceso "Portal FS Diagnostico".
+
+Uso diario
+----------
+- El servidor se inicia solo al entrar a Windows. El computador debe estar encendido y con
+  tu sesión abierta para que las tablets sincronicen.
+- Portal: acceso directo del escritorio, o http://localhost:8000 en el navegador.
+- Crear personas: Usuarios y accesos > Crear usuario. Entrégales su usuario y clave inicial.
+- Vincular una tablet: Usuarios y accesos > Vincular tablet. En la tablet, Sincronizar >
+  Vincular esta tablet, con la dirección y el código que muestra el portal.
+- Tablet perdida: Tablets > Quitar acceso.
+
+Respaldos
+---------
+- Se hace un respaldo al día (base de datos y fotos) en la carpeta elegida. Se guardan los
+  últimos 30.
+- Respaldo inmediato: clic derecho en respaldar.ps1 (en la carpeta de instalación) >
+  "Ejecutar con PowerShell".
+- Si el computador se pierde o se daña: instala de nuevo en otro computador y pide ayuda para
+  restaurar el último respaldo (comando "restaurar" en app\server).
+
+Actualizar
+----------
+Descomprime la versión nueva y haz doble clic en INSTALAR.cmd. Se conservan los datos, los
+usuarios y la configuración.
+
+Dónde queda todo
+----------------
+%LOCALAPPDATA%\FS-Diagnostico
+  datos\       base de datos y evidencia (no la borres)
+  logs\        registros del servidor, por si algo falla
+  config.env   configuración (contiene la clave interna de la base; no lo compartas)
+  iniciar.ps1, detener.ps1, respaldar.ps1
+
+Seguridad
+---------
+- La conexión entre tablets y este computador no va cifrada dentro de la red. Usa una red
+  Wi-Fi con clave y sin invitados.
+- Los datos de las tablets se guardan cifrados en cada tablet.
+- Confirma que la política de Vantaz permite guardar los datos de las entrevistas en este
+  computador.
