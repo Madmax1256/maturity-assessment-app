@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { httpTransport, listConflicts, listRejected, pendingOps, pendingSummary, resolveAnswerConflict, retryRejected, runSync, syncState, type SyncReport } from '@fs/db';
 import { useApp } from '../app-state';
 import { readEvidenceBytes } from '../storage/evidence-store';
-import { SYNC_URL, getToken, syncConfigured } from '../sync-config';
-import { PageHead } from '../ui';
+import { SYNC_URL, deviceInfo, getToken, syncConfigured } from '../sync-config';
+import { PageHead } from '@fs/ui';
 
 const ENTITY: Record<string, string> = {
   evaluation: 'Evaluación', dimension_scope: 'Alcance', answer: 'Respuesta', evidence_file: 'Evidencia', action_item: 'Plan de acción',
@@ -44,7 +44,7 @@ export function Sync({ online }: { online: boolean }) {
   const sync = async () => {
     setBusy(true);
     try {
-      const r = await runSync(ctx, httpTransport(SYNC_URL, getToken), readEvidenceBytes);
+      const r = await runSync(ctx, httpTransport(SYNC_URL, getToken), readEvidenceBytes, deviceInfo());
       setLast(r);
       write(() => {}, r.rejected || r.conflicts || r.filesFailed.length ? 'Sincronización terminada con observaciones.' : 'Sincronización completa.');
     } catch (e) {

@@ -3,10 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AppProvider } from './app-state';
 import { App } from './App';
 import { openLocalDb } from './storage/local-db';
-import '@fontsource/open-sans/latin-400.css';
-import '@fontsource/open-sans/latin-600.css';
-import '@fontsource/open-sans/latin-700.css';
-import './styles.css';
+import '@fs/ui';
 
 const root = createRoot(document.getElementById('root')!);
 

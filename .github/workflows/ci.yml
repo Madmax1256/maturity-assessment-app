@@ -48,12 +48,17 @@ jobs:
           npm run preview -w apps/tablet -- --port 4173 --strictPort &
           for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
           node apps/tablet/e2e/smoke.cjs
-      - name: App de tablet sincronizando con el servidor
+      - name: Tablet sincronizando con el servidor y portal web sobre esos datos
         run: |
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE fs_e2e"
           (cd server && FS_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fs_e2e FS_AUTH_MODE=dev \
-            FS_BLOB_DIR=$RUNNER_TEMP/blobs FS_CORS_ORIGINS=http://localhost:4173 \
+            FS_BLOB_DIR=$RUNNER_TEMP/blobs FS_CORS_ORIGINS=http://localhost:4173,http://localhost:4174 \
+            FS_BOOTSTRAP_ADMINS=admin FS_AUTO_ENROLL_ROLE=evaluador \
             python -m uvicorn app.main:create_app --factory --port 8000 &)
           for i in $(seq 1 30); do curl -sf http://localhost:8000/health >/dev/null && break; sleep 1; done
           VITE_SYNC_URL=http://localhost:8000 VITE_SYNC_TOKEN=dev:evaluador npm run build:tablet
           SYNC_URL=http://localhost:8000 node apps/tablet/e2e/smoke.cjs
+          VITE_API_URL=http://localhost:8000 VITE_AUTH_MODE=dev npm run build:portal
+          npm run preview -w apps/portal -- --port 4174 --strictPort &
+          for i in $(seq 1 30); do curl -sf http://localhost:4174/ >/dev/null && break; sleep 1; done
+          node apps/portal/e2e/smoke.cjs

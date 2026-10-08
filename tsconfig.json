@@ -8,13 +8,30 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@fs/model": ["packages/model/src/index.ts"],
-      "@fs/engine": ["packages/engine/src/index.ts"],
-      "@fs/db": ["packages/db/src/index.ts"]
+      "@fs/model": [
+        "packages/model/src/index.ts"
+      ],
+      "@fs/engine": [
+        "packages/engine/src/index.ts"
+      ],
+      "@fs/db": [
+        "packages/db/src/index.ts"
+      ],
+      "@fs/ui": [
+        "packages/ui/src/index.ts"
+      ]
     }
   },
-  "include": ["packages/*/src", "packages/*/test", "tools/*.ts"]
+  "include": [
+    "packages/model/src",
+    "packages/engine/src",
+    "packages/db/src",
+    "packages/*/test",
+    "tools/*.ts"
+  ]
 }

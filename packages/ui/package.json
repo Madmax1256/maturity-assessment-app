@@ -1,0 +1,13 @@
+{
+  "name": "@fs/ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@fontsource/open-sans": "5.2.5"
+  },
+  "peerDependencies": {
+    "react": "18.3.1"
+  }
+}

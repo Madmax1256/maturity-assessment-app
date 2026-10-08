@@ -6,6 +6,8 @@ import { applyResults, markSynced, pendingAudit, pendingOps, pendingUploads, syn
 
 export interface PushBody {
   deviceId: string;
+  appVersion?: string;
+  deviceModel?: string;
   ops: { opId: string; seq: number; entity: string; entityKey: string; op: string; payload: unknown; baseVersion: number | null }[];
   audit: { id: string; at: string; action: string; entity: string | null; entityKey: string | null; detail: unknown }[];
 }
@@ -28,7 +30,8 @@ export interface SyncReport {
 
 const BATCH = 200;
 
-export async function runSync(c: Ctx, t: SyncTransport, readFile: (localPath: string) => Promise<Uint8Array>): Promise<SyncReport> {
+export async function runSync(c: Ctx, t: SyncTransport, readFile: (localPath: string) => Promise<Uint8Array>,
+  device: { appVersion?: string; deviceModel?: string } = {}): Promise<SyncReport> {
   const state = syncState(c.db);
   if (!state) throw new Error('La tablet no tiene identificador de dispositivo');
   const report: SyncReport = { accepted: 0, rejected: 0, conflicts: 0, filesUploaded: 0, filesFailed: [] };
@@ -58,7 +61,7 @@ export async function runSync(c: Ctx, t: SyncTransport, readFile: (localPath: st
     const ops = pendingOps(c.db, BATCH + skip.size + sent.size).filter((o) => !skip.has(o.op_id) && !sent.has(o.op_id)).slice(0, BATCH);
     if (ops.length === 0) break;
     const { results } = await t.push({
-      deviceId: state.device_id,
+      deviceId: state.device_id, ...device,
       ops: ops.map((o) => ({ opId: o.op_id, seq: o.seq, entity: o.entity, entityKey: o.entity_key, op: o.op, payload: JSON.parse(o.payload), baseVersion: o.base_version })),
       audit: [],
     });
@@ -75,7 +78,7 @@ export async function runSync(c: Ctx, t: SyncTransport, readFile: (localPath: st
   // 3. La bitácora al final, para que incluya lo que dejó esta misma sincronización.
   let lastAudit: number | null = null;
   for (let audit = pendingAudit(c.db); audit.length; audit = pendingAudit(c.db)) {
-    await t.push({ deviceId: state.device_id, ops: [], audit: toWire(audit) });
+    await t.push({ deviceId: state.device_id, ...device, ops: [], audit: toWire(audit) });
     lastAudit = audit.at(-1)!.rowid;
     markSynced(c, lastAudit);
   }

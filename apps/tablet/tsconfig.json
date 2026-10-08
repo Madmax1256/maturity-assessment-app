@@ -1,11 +1,22 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": [
+      "vite/client"
+    ],
     "baseUrl": "../..",
     "noEmit": true
   },
-  "include": ["src", "vite.config.ts", "capacitor.config.ts"]
+  "include": [
+    "src",
+    "../../packages/ui/src",
+    "vite.config.ts",
+    "capacitor.config.ts"
+  ]
 }

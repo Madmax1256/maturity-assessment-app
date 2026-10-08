@@ -5,7 +5,7 @@ import { MODEL_V01, SCORES, type Question } from '@fs/model';
 import { useApp } from '../app-state';
 import { readEvidenceUrl, storeEvidenceFile } from '../storage/evidence-store';
 import { useEvaluation } from '../use-evaluation';
-import { Dialog, PageHead, SCORE_COLORS, dimLabel } from '../ui';
+import { Dialog, PageHead, SCORE_COLORS, dimLabel } from '@fs/ui';
 
 export function Capture() {
   const { ctx, write, toast, go } = useApp();

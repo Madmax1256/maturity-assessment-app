@@ -21,7 +21,7 @@ from typing import Any
 from psycopg import Connection
 from psycopg.types.json import Jsonb
 
-from .auth import User
+from .access import Account as User
 from .catalog import SCORES, Catalog
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

@@ -22,4 +22,9 @@ class Settings:
     catalog_dir: Path = field(default_factory=lambda: Path(os.environ.get("FS_CATALOG_DIR", str(ROOT / "packages" / "model" / "catalog"))))
     cors_origins: list[str] = field(default_factory=lambda: _list(os.environ.get("FS_CORS_ORIGINS")))
     max_file_mb: int = field(default_factory=lambda: int(os.environ.get("FS_MAX_FILE_MB", "25")))
+    # Correos (o ids) que entran como administradores aunque nadie los haya invitado: el primer acceso.
+    bootstrap_admins: list[str] = field(default_factory=lambda: [x.lower() for x in _list(os.environ.get("FS_BOOTSTRAP_ADMINS"))])
+    # Si se define (por ejemplo "evaluador"), una cuenta del tenant sin invitación entra con ese rol.
+    # Vacío por omisión: solo entran personas invitadas desde el portal.
+    auto_enroll_role: str = field(default_factory=lambda: os.environ.get("FS_AUTO_ENROLL_ROLE", ""))
     max_batch_ops: int = 500

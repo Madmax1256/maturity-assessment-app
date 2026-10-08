@@ -35,7 +35,7 @@ class Authenticator:
         if self.s.auth_mode == "dev":
             if not token.startswith("dev:") or len(token) < 5:
                 raise HTTPException(401, "Token de desarrollo inválido")
-            return User(id=token[4:], name=token[4:])
+            return User(id=token[4:], name=token[4:], email=token[4:])
         assert self._jwks is not None
         try:
             key = self._jwks.get_signing_key_from_jwt(token).key

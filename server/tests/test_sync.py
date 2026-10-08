@@ -155,7 +155,7 @@ def test_audit_log_is_received_once(client):
     import psycopg
     from tests.conftest import DB_URL
     with psycopg.connect(DB_URL) as conn:
-        assert conn.execute("SELECT count(*) FROM audit_log").fetchone()[0] == 1
+        assert conn.execute("SELECT count(*) FROM audit_log WHERE id = 'aud-1'").fetchone()[0] == 1
         with pytest.raises(psycopg.errors.RaiseException):
             conn.execute("DELETE FROM audit_log")
 

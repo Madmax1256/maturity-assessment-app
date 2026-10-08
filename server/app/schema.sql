@@ -145,3 +145,27 @@ DROP TRIGGER IF EXISTS audit_log_guard ON audit_log;
 CREATE TRIGGER audit_log_guard BEFORE UPDATE OR DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_guard();
 
 INSERT INTO schema_migrations (version) VALUES (1) ON CONFLICT DO NOTHING;
+
+-- Versión 2: roles y acceso (portal web), estado de las tablets.
+-- Cada persona entra con su cuenta Microsoft; el rol y el acceso se administran aquí.
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'evaluador';
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS invited_by TEXT;
+DO $$ BEGIN
+  ALTER TABLE app_user ADD CONSTRAINT app_user_role_chk CHECK (role IN ('administrador','supervisor','evaluador'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE app_user ADD CONSTRAINT app_user_status_chk CHECK (status IN ('active','invited','disabled'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS app_user_email ON app_user (lower(email)) WHERE email IS NOT NULL;
+
+ALTER TABLE device ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE device ADD COLUMN IF NOT EXISTS app_version TEXT;
+ALTER TABLE device ADD COLUMN IF NOT EXISTS model TEXT;
+ALTER TABLE device ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+ALTER TABLE device ADD COLUMN IF NOT EXISTS revoked_by TEXT;
+DO $$ BEGIN
+  ALTER TABLE device ADD CONSTRAINT device_status_chk CHECK (status IN ('active','revoked'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+INSERT INTO schema_migrations (version) VALUES (2) ON CONFLICT DO NOTHING;

@@ -6,7 +6,7 @@ Aplicación de evaluación de madurez organizacional con 12 dimensiones, 128 pre
 
 App offline-first para aplicar en terreno, desde tablets Samsung con Android, el diagnóstico de madurez en gestión de fatiga y somnolencia (modelo V01: 12 dimensiones, 128 preguntas). La especificación completa está en el documento "Especificación App Diagnóstico de Fatiga y Somnolencia".
 
-### Estado: incrementos 1 a 3
+### Estado: incrementos 1 a 4
 
 | Paquete | Qué hace | Requisitos que cubre |
 |---|---|---|
@@ -15,10 +15,12 @@ App offline-first para aplicar en terreno, desde tablets Samsung con Android, el
 | `packages/db` | Esquema SQLite local, guardado con cola de salida en la misma transacción, evidencia solo de agregar, resultados y conflictos de sincronización, bitácora | Sección 7 (offline y sincronización) |
 | `tools/import-model.ts` | Importa el Excel y entrega un informe de validación; no escribe nada si hay errores bloqueantes | RF-01 |
 | `tools/parity/make_cases.py` | Genera casos de paridad recalculando el Excel real con LibreOffice | Gate "resultados = Excel corregido" |
-| `server` | Servidor de sincronización (FastAPI + PostgreSQL): recibe archivos y cambios confirmados desde la tablet, valida propietario, catálogo y cierre, detecta conflictos; ver `server/README.md` | Sección 7, RF-10 |
+| `server` | Servidor de sincronización (FastAPI + PostgreSQL): recibe archivos y cambios confirmados desde la tablet, valida propietario, catálogo y cierre, detecta conflictos; ver `server/README.md` | Sección 7 |
+| `apps/portal` | Portal web (navegador): panel, evaluaciones con resultados, respuestas, evidencia y plan; usuarios e invitaciones, tablets, modelo y bitácora para el administrador | Secciones 6 y 8 |
+| `packages/ui` | Estilos de marca Vantaz y componentes de resultados compartidos por la tablet y el portal | Sección 8 |
 | `apps/tablet` | App de terreno (React + Vite, empaquetada con Capacitor para Android): evaluaciones, antecedentes y alcance, captura con No aplica y evidencia, resultados, plan de acción y cola de sincronización | RF-02 a RF-09, sección 7 |
 
-Pendiente para los siguientes incrementos: inicio de sesión con Entra ID en la tablet (el servidor ya valida tokens de Entra), el despliegue en Azure con Blob Storage, el portal web y el informe PDF.
+Pendiente para los siguientes incrementos: inicio de sesión con Entra ID en la tablet y el portal (el servidor ya valida tokens de Entra), el despliegue en Azure con Blob Storage, el informe PDF y la exportación a Excel.
 
 ### App de tablet: cómo guarda los datos
 
@@ -45,6 +47,7 @@ npm test                 # 79 pruebas: catálogo, motor, paridad con el Excel, b
 npm run typecheck
 npm run dev:tablet       # app de tablet en el navegador (http://localhost:5173)
 npm run build:tablet     # build para Android en apps/tablet/dist
+npm run dev:portal       # portal web (http://localhost:5174); VITE_API_URL apunta al servidor
 node apps/tablet/e2e/smoke.cjs   # prueba de humo sobre el build servido con `npm run preview -w apps/tablet`
 npm run import-model -- fixtures/Diagnostico_FS_V01.xlsx V01
 python3 tools/parity/make_cases.py   # requiere openpyxl y LibreOffice
