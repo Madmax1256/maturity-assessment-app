@@ -83,6 +83,7 @@ if (Test-Path $app) {
   Get-ChildItem $app | Where-Object { $_.Name -ne 'server' } | Remove-Item -Recurse -Force
   Get-ChildItem (Join-Path $app 'server') -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '.venv' } | Remove-Item -Recurse -Force
 }
+New-Item -ItemType Directory -Force -Path $app | Out-Null
 Copy-Item -Path (Join-Path $Origen 'app\*') -Destination $app -Recurse -Force
 foreach ($f in @('iniciar.ps1', 'detener.ps1', 'respaldar.ps1', 'LEEME.txt')) { Copy-Item (Join-Path $Origen $f) $Destino -Force }
 Get-ChildItem $Destino -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
