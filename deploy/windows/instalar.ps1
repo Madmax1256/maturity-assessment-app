@@ -154,6 +154,7 @@ $lineas = @(
   "FS_PORT=$Puerto",
   "FS_BLOB_DIR=$(Join-Path $datos 'evidencia')",
   "FS_PORTAL_DIR=$(Join-Path $app 'portal')",
+  "FS_TABLET_DIR=$(Join-Path $app 'tablet')",
   "FS_CATALOG_DIR=$(Join-Path $app 'packages\model\catalog')",
   "FS_BACKUP_DIR=$CarpetaRespaldo",
   "FS_PG_BIN=$pgbin"
@@ -247,6 +248,7 @@ if (-not $ok) { Falla "el servidor no respondió. Revisa $(Join-Path $logs 'serv
 if (-not $SinAccesoDirecto) {
   $escritorio = [Environment]::GetFolderPath('Desktop')
   [IO.File]::WriteAllLines((Join-Path $escritorio 'Portal FS Diagnostico.url'), @('[InternetShortcut]', "URL=http://127.0.0.1:$Puerto/"))
+  [IO.File]::WriteAllLines((Join-Path $escritorio 'Captura FS Diagnostico.url'), @('[InternetShortcut]', "URL=http://127.0.0.1:$Puerto/tablet/"))
 }
 
 $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
@@ -255,5 +257,6 @@ $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
 Write-Host ''
 Write-Host 'Listo. El servidor quedó funcionando y se inicia solo al entrar a Windows.' -ForegroundColor Green
 Write-Host "Portal en este computador: http://localhost:$Puerto/  (acceso directo en el escritorio)"
+Write-Host "App de captura para probar sin tablet: http://localhost:$Puerto/tablet/"
 foreach ($ip in $ips) { Write-Host "Dirección para las tablets: ${ip}:$Puerto" }
 Write-Host "Respaldos diarios en: $CarpetaRespaldo"

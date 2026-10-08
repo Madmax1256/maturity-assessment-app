@@ -31,7 +31,8 @@ const fmtWhen = (iso: string | null | undefined) => (iso ? new Date(iso).toLocal
 /** Vincula la tablet con el servidor del computador usando el código que entrega el administrador. */
 function PairCard({ online }: { online: boolean }) {
   const { ctx, setUserId, write, toast } = useApp();
-  const [url, setUrl] = useState('');
+  // Servida por el propio servidor (/tablet/ en el computador): la dirección ya se conoce.
+  const [url, setUrl] = useState(() => (location.protocol.startsWith('http') && location.pathname.startsWith('/tablet') ? location.host : ''));
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);

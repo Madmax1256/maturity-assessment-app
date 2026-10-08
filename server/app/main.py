@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import mimetypes
 import uuid
 from pathlib import Path
 import re
@@ -109,7 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stop.set()
         pool.close()
 
-    app = FastAPI(title="Diagnóstico F&S: sincronización", version="0.5.0", lifespan=lifespan)
+    app = FastAPI(title="Diagnóstico F&S: sincronización", version="0.5.1", lifespan=lifespan)
     # La app de la tablet (Capacitor) llama desde https://localhost; en modo local se permite por omisión.
     origins = s.cors_origins or (["https://localhost", "capacitor://localhost"] if s.auth_mode == "local" else [])
     if origins:
@@ -484,6 +485,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                    WHERE (%s::timestamptz IS NULL OR a.at < %s::timestamptz)
                                    ORDER BY a.at DESC, a.received_at DESC LIMIT %s""", (before, before, limit)).fetchall()
 
+    if s.tablet_dir and (s.tablet_dir / "index.html").is_file():
+        # La app de captura en el navegador del mismo computador, para probarla sin tablet.
+        mimetypes.add_type("application/wasm", ".wasm")  # el registro de Windows no siempre lo trae
+        app.mount("/tablet", StaticFiles(directory=s.tablet_dir, html=True), name="tablet")
     if s.portal_dir and (s.portal_dir / "index.html").is_file():
         # Un solo programa en el computador: la API en /v1 y el portal en la raíz.
         app.mount("/", StaticFiles(directory=s.portal_dir, html=True), name="portal")

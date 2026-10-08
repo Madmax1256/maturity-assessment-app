@@ -24,7 +24,8 @@ Instalar
 4. Escribe tu usuario, tu nombre y una clave de al menos 10 caracteres. Con eso entras al portal.
 5. Windows pedirá permiso de administrador una vez, para abrir el puerto 8000 a las tablets.
 Al terminar, el instalador muestra la dirección que hay que escribir en las tablets
-(por ejemplo 192.168.1.20:8000) y deja en el escritorio el acceso "Portal FS Diagnostico".
+(por ejemplo 192.168.1.20:8000) y deja en el escritorio los accesos "Portal FS Diagnostico" y
+"Captura FS Diagnostico".
 
 Uso diario
 ----------
@@ -35,6 +36,15 @@ Uso diario
 - Vincular una tablet: Usuarios y accesos > Vincular tablet. En la tablet, Sincronizar >
   Vincular esta tablet, con la dirección y el código que muestra el portal.
 - Tablet perdida: Tablets > Quitar acceso.
+
+Probar sin tablet
+-----------------
+El acceso "Captura FS Diagnostico" abre en este computador la misma app que usan las tablets.
+1. En el portal, crea un usuario evaluador (o usa el tuyo) y pulsa "Vincular tablet".
+2. En la app de captura, ve a Sincronizar: la dirección ya viene escrita; ingresa el código.
+3. Crea una evaluación, responde preguntas y sincroniza. El resultado aparece en el portal.
+Los datos de la app de captura quedan en este navegador; si borras los datos del navegador, se
+pierden las evaluaciones que no hayas sincronizado.
 
 Respaldos
 ---------
