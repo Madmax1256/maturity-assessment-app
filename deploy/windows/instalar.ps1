@@ -235,17 +235,18 @@ if (-not $SinTareaProgramada) {
   Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $iniciar)
 }
 
+# 127.0.0.1 y no localhost: Windows prueba primero IPv6 (::1) y el servidor escucha en IPv4.
 Paso 'Esperando a que el servidor responda'
 $ok = $false
 for ($i = 0; $i -lt 90; $i++) {
-  try { if ((Invoke-WebRequest -Uri "http://localhost:$Puerto/health" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { $ok = $true; break } } catch { }
+  try { if ((Invoke-WebRequest -Uri "http://127.0.0.1:$Puerto/health" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { $ok = $true; break } } catch { }
   Start-Sleep -Seconds 1
 }
 if (-not $ok) { Falla "el servidor no respondió. Revisa $(Join-Path $logs 'servidor.log')." }
 
 if (-not $SinAccesoDirecto) {
   $escritorio = [Environment]::GetFolderPath('Desktop')
-  [IO.File]::WriteAllLines((Join-Path $escritorio 'Portal FS Diagnostico.url'), @('[InternetShortcut]', "URL=http://localhost:$Puerto/"))
+  [IO.File]::WriteAllLines((Join-Path $escritorio 'Portal FS Diagnostico.url'), @('[InternetShortcut]', "URL=http://127.0.0.1:$Puerto/"))
 }
 
 $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |

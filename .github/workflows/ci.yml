@@ -115,8 +115,8 @@ jobs:
           Add-Content "$d\config.env" 'FS_CORS_ORIGINS=http://localhost:4173'
           & "$d\detener.ps1"
           Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$d\iniciar.ps1")
-          for ($i = 0; $i -lt 60; $i++) { try { if ((Invoke-WebRequest http://localhost:8000/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { break } } catch { }; Start-Sleep 1 }
-          (Invoke-WebRequest http://localhost:8000/v1/auth/config -UseBasicParsing).Content
+          for ($i = 0; $i -lt 60; $i++) { try { if ((Invoke-WebRequest http://127.0.0.1:8000/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { break } } catch { }; Start-Sleep 1 }
+          (Invoke-WebRequest http://127.0.0.1:8000/v1/auth/config -UseBasicParsing).Content
       - name: Portal, vinculación y sincronización en Windows
         shell: bash
         run: |
@@ -124,7 +124,7 @@ jobs:
           npx playwright install chromium
           npm run preview -w apps/tablet -- --port 4173 --strictPort &
           for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
-          SERVER_URL=http://localhost:8000 node e2e/local-mode.cjs
+          SERVER_URL=http://127.0.0.1:8000 node e2e/local-mode.cjs
       - name: Respaldo manual y actualización conservando los datos
         run: |
           $d = "$env:LOCALAPPDATA\FS-Diagnostico"
@@ -133,8 +133,8 @@ jobs:
           $dir = (Get-ChildItem "$env:RUNNER_TEMP\pkg")[0].FullName
           & "$dir\instalar.ps1" -NoInteractivo -SinTareaProgramada -SinFirewall -SinAccesoDirecto
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          $r = Invoke-RestMethod -Method Post -Uri http://localhost:8000/v1/auth/login -ContentType 'application/json' -Body '{"username":"max","password":"clave-admin-e2e"}'
-          $ev = Invoke-RestMethod -Uri http://localhost:8000/v1/evaluations -Headers @{ authorization = "Bearer $($r.token)" }
+          $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/v1/auth/login -ContentType 'application/json' -Body '{"username":"max","password":"clave-admin-e2e"}'
+          $ev = Invoke-RestMethod -Uri http://127.0.0.1:8000/v1/evaluations -Headers @{ authorization = "Bearer $($r.token)" }
           if (-not ($ev | Where-Object { $_.company -eq 'Minera Local' })) { Write-Host 'Se perdió la evaluación al actualizar'; exit 1 }
           Write-Host "Evaluaciones después de actualizar: $($ev.Count)"
       - name: Registros del servidor
