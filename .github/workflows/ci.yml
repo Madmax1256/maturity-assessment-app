@@ -17,3 +17,11 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build:tablet
+      - name: Prueba de humo de la app de tablet
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+          npm run preview -w apps/tablet -- --port 4173 --strictPort &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
+          node apps/tablet/e2e/smoke.cjs
