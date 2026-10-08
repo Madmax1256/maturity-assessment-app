@@ -1,5 +1,5 @@
--- Base local de la tablet (SQLite; en el dispositivo se abre con SQLCipher y la llave vive en
--- Android Keystore). Sección 7 de la especificación.
+-- Base local de la tablet (SQLite; en el dispositivo corre con sql.js y se guarda cifrada con
+-- AES-GCM, ver apps/tablet/src/storage/local-db.ts). Sección 7 de la especificación.
 -- Convenciones: ids UUID v7 generados en el dispositivo; row_version la asigna el servidor;
 -- base_version es la versión sobre la que se hizo el cambio local; deleted = lápida.
 
@@ -118,6 +118,12 @@ CREATE TABLE IF NOT EXISTS sync_state (
   last_sync_at TEXT,
   last_sync_user TEXT,
   device_id TEXT NOT NULL
+);
+
+-- Marcadores de la sincronización (por ejemplo, hasta qué fila de la bitácora ya se envió).
+CREATE TABLE IF NOT EXISTS sync_cursor (
+  name TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 
 -- Bitácora local; se sube con la sincronización y no se edita.
