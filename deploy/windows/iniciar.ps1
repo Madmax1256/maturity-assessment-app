@@ -26,7 +26,8 @@ while ($true) {
   & $pgctl status -D $pgdata | Out-Null
   if ($LASTEXITCODE -ne 0) {
     Registrar 'Iniciando PostgreSQL'
-    & $pgctl start -w -D $pgdata -l (Join-Path $logs 'postgresql.log') | Out-Null
+    # Sin tubería: PostgreSQL hereda la salida y una tubería quedaría abierta para siempre.
+    & $pgctl start -w -D $pgdata -l (Join-Path $logs 'postgresql.log')
     if ($LASTEXITCODE -ne 0) { Registrar 'PostgreSQL no inició; reintento en 30 segundos'; Start-Sleep -Seconds 30; continue }
   }
   Registrar "Iniciando el servidor en el puerto $env:FS_PORT"
