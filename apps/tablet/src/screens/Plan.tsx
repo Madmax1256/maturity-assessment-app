@@ -3,7 +3,7 @@ import { priorityFor, suggestedGaps } from '@fs/engine';
 import { MODEL_V01 } from '@fs/model';
 import { useApp } from '../app-state';
 import { useEvaluation } from '../use-evaluation';
-import { PageHead, SCORE_COLORS } from '../ui';
+import { PageHead, SCORE_COLORS } from '@fs/ui';
 
 export function Plan() {
   const { ctx, write } = useApp();

@@ -2,7 +2,7 @@
   "name": "fs-diagnostico",
   "private": true,
   "version": "0.1.0",
-  "description": "App offline-first de Diagnóstico de Madurez en Gestión de Fatiga y Somnolencia (Vantaz)",
+  "description": "App offline-first de Diagn\u00f3stico de Madurez en Gesti\u00f3n de Fatiga y Somnolencia (Vantaz)",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -10,11 +10,13 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/tablet/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/tablet/tsconfig.json && tsc -p apps/portal/tsconfig.json",
     "import-model": "node tools/import-model.ts",
     "parity:cases": "python3 tools/parity/make_cases.py",
     "dev:tablet": "npm run dev -w apps/tablet",
-    "build:tablet": "npm run build -w apps/tablet"
+    "build:tablet": "npm run build -w apps/tablet",
+    "dev:portal": "npm run dev -w apps/portal",
+    "build:portal": "npm run build -w apps/portal"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

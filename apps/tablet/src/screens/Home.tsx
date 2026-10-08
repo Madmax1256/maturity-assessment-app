@@ -2,7 +2,7 @@ import { createEvaluation, listEvaluations, loadEvaluationInput } from '@fs/db';
 import { computeResults } from '@fs/engine';
 import { MODEL_V01 } from '@fs/model';
 import { useApp } from '../app-state';
-import { Bar, LevelPill, PageHead } from '../ui';
+import { Bar, LevelPill, PageHead } from '@fs/ui';
 
 export function Home() {
   const { ctx, rev, go, write } = useApp();

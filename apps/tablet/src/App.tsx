@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { pendingSummary } from '@fs/db';
 import { useApp, type View } from './app-state';
 import { useEvaluation } from './use-evaluation';
-import logo from './vantaz-logo.jpg';
+import { vantazLogo as logo } from '@fs/ui';
 import { Home } from './screens/Home';
 import { Header } from './screens/Header';
 import { Capture } from './screens/Capture';

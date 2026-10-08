@@ -7,3 +7,11 @@ const TOKEN: string = import.meta.env.VITE_SYNC_TOKEN ?? '';
 
 export const syncConfigured = () => Boolean(SYNC_URL && TOKEN);
 export const getToken = async () => TOKEN;
+
+declare const __APP_VERSION__: string;
+
+/** Versión de la app y modelo de la tablet, para que el administrador los vea en el portal. */
+export function deviceInfo() {
+  const m = /Android [^;]*; ([^;)]+?)(?: Build|\))/.exec(navigator.userAgent);
+  return { appVersion: __APP_VERSION__, deviceModel: m?.[1]?.trim() || undefined };
+}

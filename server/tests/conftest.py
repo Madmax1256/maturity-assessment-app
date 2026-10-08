@@ -14,7 +14,8 @@ TABLES = "applied_op, audit_log, action_item, evidence_file, blob_object, answer
 
 @pytest.fixture(scope="session")
 def app(tmp_path_factory):
-    s = Settings(database_url=DB_URL, auth_mode="dev", blob_dir=tmp_path_factory.mktemp("blobs"))
+    s = Settings(database_url=DB_URL, auth_mode="dev", blob_dir=tmp_path_factory.mktemp("blobs"),
+                 bootstrap_admins=["admin"], auto_enroll_role="evaluador")
     return create_app(s)
 
 

@@ -3,7 +3,7 @@ import { dimensionJustifications, setDimensionScope, updateEvaluationHeader } fr
 import { MODEL_V01, type DimensionCode } from '@fs/model';
 import { useApp } from '../app-state';
 import { useEvaluation } from '../use-evaluation';
-import { Dialog, PageHead, dimLabel } from '../ui';
+import { Dialog, PageHead, dimLabel } from '@fs/ui';
 
 export function Header() {
   const { ctx, write } = useApp();
