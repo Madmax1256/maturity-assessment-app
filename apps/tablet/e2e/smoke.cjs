@@ -2,6 +2,8 @@
 // Recorre: crear evaluación, alcance, responder, No aplica, evidencia, resultados, plan, cola de
 // sincronización, persistencia cifrada y ancho angosto. Uso: node apps/tablet/e2e/smoke.cjs
 // Variables opcionales: APP_URL, CHROMIUM_PATH, PLAYWRIGHT_MODULE.
+// Con SYNC_URL (build hecho con VITE_SYNC_URL y VITE_SYNC_TOKEN=dev:evaluador) también sincroniza
+// contra el servidor real y verifica lo que quedó allá.
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAAKklEQVR4nO3NMQ0AAAgDsOmacuQhA44m/ZtpT0QsFovFYrFYLBaLxX/jBbz4foxh4KpyAAAAAElFTkSuQmCC', 'base64');
 (async () => {
@@ -54,7 +56,22 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAAKklEQVR
   ok(await page.locator('.dimtable tbody .prio.p1').count() === 1, `brecha priorizada P1 (${gapRows} brechas)`);
   await page.locator('.nav', { hasText: 'Sincronizar' }).click();
   const ops = await page.locator('.op').count();
-  ok(ops > 0 && await page.getByRole('button', { name: 'Confirmar y sincronizar' }).isDisabled(), `${ops} cambios en cola, nada se envía solo`);
+  ok(ops > 0, `${ops} cambios en cola; nada se envía sin confirmar`);
+  if (process.env.SYNC_URL) {
+    await page.getByRole('button', { name: 'Confirmar y sincronizar' }).click();
+    await page.getByText('Todo está sincronizado.').waitFor({ timeout: 15000 });
+    ok(await page.getByText(/cambios aceptados, 1 archivos subidos\./).count() === 1, 'sincronización confirmada: cambios aceptados y foto subida');
+    const h = { authorization: 'Bearer dev:evaluador' };
+    const list = await (await fetch(`${process.env.SYNC_URL}/v1/evaluations`, { headers: h })).json();
+    const ev = list.find((e) => e.company === 'Minera Prueba');
+    const det = await (await fetch(`${process.env.SYNC_URL}/v1/evaluations/${ev.id}`, { headers: h })).json();
+    ok(det.answers.length === 3 && det.evidence.length === 1 && det.actions[0].impact === 5 && det.scopes.length === 12,
+      `el servidor tiene la evaluación (${det.answers.length} respuestas, ${det.evidence.length} foto, ${det.scopes.length} dimensiones, plan P1)`);
+    const img = await fetch(`${process.env.SYNC_URL}/v1/files/${det.evidence[0].sha256}`, { headers: h });
+    ok(img.ok && Buffer.from(await img.arrayBuffer()).equals(PNG), 'la foto en el servidor es idéntica a la original');
+  } else {
+    ok(await page.getByRole('button', { name: 'Confirmar y sincronizar' }).isDisabled(), 'sin servidor configurado, el botón queda desactivado');
+  }
   // persistencia cifrada: recargar
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await page.waitForTimeout(800);

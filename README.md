@@ -6,7 +6,7 @@ Aplicación de evaluación de madurez organizacional con 12 dimensiones, 128 pre
 
 App offline-first para aplicar en terreno, desde tablets Samsung con Android, el diagnóstico de madurez en gestión de fatiga y somnolencia (modelo V01: 12 dimensiones, 128 preguntas). La especificación completa está en el documento "Especificación App Diagnóstico de Fatiga y Somnolencia".
 
-### Estado: incrementos 1 y 2
+### Estado: incrementos 1 a 3
 
 | Paquete | Qué hace | Requisitos que cubre |
 |---|---|---|
@@ -15,16 +15,18 @@ App offline-first para aplicar en terreno, desde tablets Samsung con Android, el
 | `packages/db` | Esquema SQLite local, guardado con cola de salida en la misma transacción, evidencia solo de agregar, resultados y conflictos de sincronización, bitácora | Sección 7 (offline y sincronización) |
 | `tools/import-model.ts` | Importa el Excel y entrega un informe de validación; no escribe nada si hay errores bloqueantes | RF-01 |
 | `tools/parity/make_cases.py` | Genera casos de paridad recalculando el Excel real con LibreOffice | Gate "resultados = Excel corregido" |
+| `server` | Servidor de sincronización (FastAPI + PostgreSQL): recibe archivos y cambios confirmados desde la tablet, valida propietario, catálogo y cierre, detecta conflictos; ver `server/README.md` | Sección 7, RF-10 |
 | `apps/tablet` | App de terreno (React + Vite, empaquetada con Capacitor para Android): evaluaciones, antecedentes y alcance, captura con No aplica y evidencia, resultados, plan de acción y cola de sincronización | RF-02 a RF-09, sección 7 |
 
-Pendiente para los siguientes incrementos: la API de sincronización (FastAPI + PostgreSQL + Blob en Azure) con inicio de sesión Entra ID, el portal web y el informe PDF.
+Pendiente para los siguientes incrementos: inicio de sesión con Entra ID en la tablet (el servidor ya valida tokens de Entra), el despliegue en Azure con Blob Storage, el portal web y el informe PDF.
 
 ### App de tablet: cómo guarda los datos
 
 - La base local es SQLite compilado a WebAssembly (sql.js) y usa el mismo código de `packages/db` que las pruebas.
 - Después de cada cambio se guarda una copia completa de la base cifrada con AES-GCM de 256 bits en el almacenamiento del dispositivo. La llave se genera en la tablet y no es exportable. Las fotos y documentos de evidencia se cifran igual, cada uno por separado.
 - Funciona sin conexión: la fuente Open Sans y todos los recursos van dentro de la app.
-- Nada se envía solo. La pantalla Sincronizar muestra cada cambio en cola; el envío llega con el servidor del siguiente incremento.
+- Nada se envía solo. La pantalla Sincronizar muestra cada cambio en cola y envía solo cuando el evaluador confirma. Primero sube los archivos que falten, luego los cambios en orden y al final la bitácora. Si otro dispositivo cambió una respuesta, el evaluador elige cuál queda; si el servidor rechaza un cambio, se muestra el motivo y se puede reintentar.
+- El servidor se configura en el build con `VITE_SYNC_URL`; mientras no esté Entra ID se usa `VITE_SYNC_TOKEN=dev:<usuario>`, que el servidor acepta solo en modo de desarrollo.
 
 Diferencias con la especificación, aprobadas por Max (2026-10-08): se usa React sin Ionic (los estilos vienen del prototipo aprobado) y sql.js con AES-GCM en lugar de SQLCipher, porque así el mismo código de base corre en la tablet, en el navegador y en CI.
 
@@ -39,7 +41,7 @@ Diferencias con la especificación, aprobadas por Max (2026-10-08): se usa React
 
 ```bash
 npm install
-npm test                 # 72 pruebas: catálogo, motor, paridad con el Excel y base local
+npm test                 # 79 pruebas: catálogo, motor, paridad con el Excel, base local y sincronización
 npm run typecheck
 npm run dev:tablet       # app de tablet en el navegador (http://localhost:5173)
 npm run build:tablet     # build para Android en apps/tablet/dist

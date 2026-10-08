@@ -8,20 +8,52 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fs_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      FS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fs_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: server/requirements-dev.txt
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build:tablet
-      - name: Prueba de humo de la app de tablet
+      - name: Pruebas del servidor
+        working-directory: server
+        run: |
+          pip install -r requirements-dev.txt
+          python -m pytest -q
+      - name: Navegador para las pruebas de humo
         run: |
           npm i --no-save --no-audit --no-fund playwright@1.56.1
           npx playwright install --with-deps chromium
+      - name: App de tablet sin servidor configurado
+        run: |
+          npm run build:tablet
           npm run preview -w apps/tablet -- --port 4173 --strictPort &
           for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
           node apps/tablet/e2e/smoke.cjs
+      - name: App de tablet sincronizando con el servidor
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE fs_e2e"
+          (cd server && FS_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fs_e2e FS_AUTH_MODE=dev \
+            FS_BLOB_DIR=$RUNNER_TEMP/blobs FS_CORS_ORIGINS=http://localhost:4173 \
+            python -m uvicorn app.main:create_app --factory --port 8000 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:8000/health >/dev/null && break; sleep 1; done
+          VITE_SYNC_URL=http://localhost:8000 VITE_SYNC_TOKEN=dev:evaluador npm run build:tablet
+          SYNC_URL=http://localhost:8000 node apps/tablet/e2e/smoke.cjs

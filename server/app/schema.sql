@@ -1,0 +1,147 @@
+-- Base central (PostgreSQL). Recibe lo que cada tablet envía cuando el evaluador confirma la
+-- sincronización. row_version es global y creciente: lo asigna el servidor en cada cambio.
+-- Sección 7 de la especificación.
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INTEGER PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE SEQUENCE IF NOT EXISTS row_version_seq;
+
+CREATE TABLE IF NOT EXISTS app_user (
+  id TEXT PRIMARY KEY,               -- oid de Entra ID (o usuario de desarrollo)
+  name TEXT,
+  email TEXT,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS device (
+  id TEXT PRIMARY KEY,               -- device_id generado por la tablet
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_sync_at TIMESTAMPTZ,
+  last_user_id TEXT REFERENCES app_user(id)
+);
+
+CREATE TABLE IF NOT EXISTS evaluation (
+  id TEXT PRIMARY KEY,
+  model_id TEXT NOT NULL,
+  company TEXT NOT NULL,
+  site TEXT,
+  evaluated_on DATE NOT NULL,
+  owner_user_id TEXT NOT NULL REFERENCES app_user(id),
+  interviewees JSONB NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','closed')),
+  closed_at TIMESTAMPTZ,
+  row_version BIGINT NOT NULL,
+  last_device_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS dimension_scope (
+  evaluation_id TEXT NOT NULL REFERENCES evaluation(id),
+  dimension TEXT NOT NULL,
+  applies BOOLEAN NOT NULL,
+  justification TEXT,
+  row_version BIGINT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (evaluation_id, dimension),
+  CHECK (applies OR length(trim(coalesce(justification, ''))) > 0)
+);
+
+CREATE TABLE IF NOT EXISTS answer (
+  evaluation_id TEXT NOT NULL REFERENCES evaluation(id),
+  question_id TEXT NOT NULL,
+  score SMALLINT CHECK (score IN (0,25,50,75,100)),
+  not_applicable BOOLEAN NOT NULL DEFAULT false,
+  na_justification TEXT,
+  evidence_note TEXT,
+  row_version BIGINT NOT NULL,
+  last_device_id TEXT,
+  updated_by TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (evaluation_id, question_id),
+  CHECK (NOT (not_applicable AND score IS NOT NULL)),
+  CHECK (NOT not_applicable OR length(trim(coalesce(na_justification, ''))) > 0)
+);
+
+-- Evidencia: solo se agrega. El archivo se sube antes que su registro y se verifica por sha256.
+CREATE TABLE IF NOT EXISTS evidence_file (
+  id TEXT PRIMARY KEY,
+  evaluation_id TEXT NOT NULL REFERENCES evaluation(id),
+  question_id TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('photo','document','audio_note')),
+  mime TEXT NOT NULL,
+  bytes BIGINT NOT NULL,
+  sha256 TEXT NOT NULL,
+  source TEXT,
+  created_by TEXT NOT NULL,
+  row_version BIGINT NOT NULL,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  withdrawn BOOLEAN NOT NULL DEFAULT false
+);
+CREATE OR REPLACE FUNCTION evidence_file_guard() RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'La evidencia no se borra; se marca como retirada'; END IF;
+  IF NEW.sha256 <> OLD.sha256 OR NEW.bytes <> OLD.bytes OR NEW.evaluation_id <> OLD.evaluation_id THEN
+    RAISE EXCEPTION 'La evidencia no se modifica';
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS evidence_file_guard ON evidence_file;
+CREATE TRIGGER evidence_file_guard BEFORE UPDATE OR DELETE ON evidence_file FOR EACH ROW EXECUTE FUNCTION evidence_file_guard();
+
+-- Archivos recibidos, direccionados por contenido. Un mismo archivo enviado dos veces se guarda una vez.
+CREATE TABLE IF NOT EXISTS blob_object (
+  sha256 TEXT PRIMARY KEY,
+  bytes BIGINT NOT NULL,
+  mime TEXT NOT NULL,
+  uploaded_by TEXT NOT NULL,
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS action_item (
+  id TEXT PRIMARY KEY,
+  evaluation_id TEXT NOT NULL REFERENCES evaluation(id),
+  question_id TEXT,
+  description TEXT NOT NULL,
+  impact SMALLINT CHECK (impact BETWEEN 1 AND 5),
+  effort SMALLINT CHECK (effort BETWEEN 1 AND 5),
+  owner TEXT,
+  due_on DATE,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','done','cancelled')),
+  row_version BIGINT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Idempotencia: cada op_id se aplica una sola vez; un reenvío recibe la misma respuesta.
+CREATE TABLE IF NOT EXISTS applied_op (
+  op_id TEXT PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  entity_key TEXT NOT NULL,
+  result JSONB NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Bitácora: la de cada tablet más la del servidor. Solo se agrega.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id TEXT PRIMARY KEY,
+  at TIMESTAMPTZ NOT NULL,
+  user_id TEXT NOT NULL,
+  device_id TEXT,
+  action TEXT NOT NULL,
+  entity TEXT,
+  entity_key TEXT,
+  detail JSONB,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE FUNCTION audit_log_guard() RETURNS trigger AS $$
+BEGIN RAISE EXCEPTION 'La bitácora no se edita'; END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS audit_log_guard ON audit_log;
+CREATE TRIGGER audit_log_guard BEFORE UPDATE OR DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_guard();
+
+INSERT INTO schema_migrations (version) VALUES (1) ON CONFLICT DO NOTHING;

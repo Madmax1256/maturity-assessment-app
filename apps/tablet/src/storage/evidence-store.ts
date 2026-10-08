@@ -26,9 +26,20 @@ export async function storeEvidenceFile(file: File): Promise<{ localPath: string
   return { localPath, sha256, bytes: data.byteLength, mime: file.type || 'application/octet-stream' };
 }
 
-export async function readEvidenceUrl(localPath: string): Promise<string | null> {
+async function decrypt(localPath: string): Promise<{ plain: ArrayBuffer; mime: string } | null> {
   const rec = await idbGet<{ iv: Uint8Array; ct: Uint8Array; mime: string }>(localPath);
   if (!rec) return null;
-  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: rec.iv }, await key(), rec.ct);
-  return URL.createObjectURL(new Blob([plain], { type: rec.mime }));
+  return { plain: await crypto.subtle.decrypt({ name: 'AES-GCM', iv: rec.iv }, await key(), rec.ct), mime: rec.mime };
+}
+
+export async function readEvidenceUrl(localPath: string): Promise<string | null> {
+  const r = await decrypt(localPath);
+  return r ? URL.createObjectURL(new Blob([r.plain], { type: r.mime })) : null;
+}
+
+/** Contenido original del archivo, para subirlo al servidor durante la sincronización. */
+export async function readEvidenceBytes(localPath: string): Promise<Uint8Array> {
+  const r = await decrypt(localPath);
+  if (!r) throw new Error('El archivo ya no está en la tablet');
+  return new Uint8Array(r.plain);
 }

@@ -215,6 +215,7 @@ export function applyResults(c: Ctx, results: OpResult[]) {
           c.db.run('UPDATE answer SET row_version = ?, base_version = ? WHERE evaluation_id = ? AND question_id = ?', [r.rowVersion, r.rowVersion, ev!, q!]);
         }
         if (op.entity === 'evaluation') c.db.run('UPDATE evaluation SET row_version = ?, base_version = ? WHERE id = ?', [r.rowVersion, r.rowVersion, op.entity_key]);
+        if (op.entity === 'action_item') c.db.run('UPDATE action_item SET row_version = ?, base_version = ? WHERE id = ?', [r.rowVersion, r.rowVersion, op.entity_key]);
         if (op.entity === 'evidence_file') c.db.run('UPDATE evidence_file SET uploaded_at = coalesce(uploaded_at, ?) WHERE id = ?', [nowOf(c), op.entity_key]);
       } else {
         c.db.run('UPDATE outbox SET status = ?, attempts = attempts + 1, result = ? WHERE op_id = ?',
@@ -242,6 +243,56 @@ export function resolveAnswerConflict(c: Ctx, opId: string, choice: 'keep_local'
     }
     audit(c, 'sync.conflict_resolved', 'answer', op.entity_key, { choice });
   });
+}
+
+export interface ServerAnswer { score: Score | null; notApplicable: boolean; naJustification: string | null; evidenceNote: string | null; rowVersion: number; updatedBy?: string; updatedAt?: string }
+
+/** Respuestas que otro dispositivo cambió; el propietario decide cuál queda. */
+export function listConflicts(db: Driver) {
+  return db.all<OutboxOp & { result: string }>("SELECT op_id, seq, entity, entity_key, op, payload, base_version, result FROM outbox WHERE status = 'conflict' ORDER BY seq")
+    .map((o) => ({ ...o, local: JSON.parse(o.payload) as { score: Score | null; notApplicable: boolean; naJustification: string | null; evidenceNote: string | null }, server: (JSON.parse(o.result) as { server: ServerAnswer }).server }));
+}
+
+/** Cambios que el servidor no aceptó, con su motivo. */
+export function listRejected(db: Driver) {
+  return db.all<OutboxOp & { result: string }>("SELECT op_id, seq, entity, entity_key, op, payload, base_version, result FROM outbox WHERE status = 'rejected' ORDER BY seq")
+    .map((o) => ({ ...o, reason: (JSON.parse(o.result) as { reason: string }).reason }));
+}
+
+/** Vuelve a poner en cola un cambio rechazado (por ejemplo, cuando faltaba subir su archivo). */
+export function retryRejected(c: Ctx, opId: string) {
+  transaction(c.db, () => {
+    c.db.run("UPDATE outbox SET status = 'pending', result = NULL WHERE op_id = ? AND status = 'rejected'", [opId]);
+    audit(c, 'sync.retry', 'evaluation', '*', { opId });
+  });
+}
+
+export interface AuditRow { rowid: number; id: string; at: string; action: string; entity: string | null; entity_key: string | null; detail: string | null }
+
+/** Bitácora aún no enviada. Se usa rowid como marcador porque crece con cada inserción. */
+export function pendingAudit(db: Driver, limit = 1000): AuditRow[] {
+  const cur = Number(db.get<{ value: string }>("SELECT value FROM sync_cursor WHERE name = 'audit'")?.value ?? 0);
+  return db.all<AuditRow>('SELECT rowid, id, at, action, entity, entity_key, detail FROM audit_log WHERE rowid > ? ORDER BY rowid LIMIT ?', [cur, limit]);
+}
+
+export function markSynced(c: Ctx, auditRowid: number | null) {
+  transaction(c.db, () => {
+    if (auditRowid != null) {
+      c.db.run(`INSERT INTO sync_cursor (name, value) VALUES ('audit', ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value`, [String(auditRowid)]);
+    }
+    c.db.run('UPDATE sync_state SET last_sync_at = ?, last_sync_user = ? WHERE id = 1', [nowOf(c), c.userId]);
+  });
+}
+
+export function syncState(db: Driver) {
+  return db.get<{ device_id: string; last_sync_at: string | null; last_sync_user: string | null }>('SELECT device_id, last_sync_at, last_sync_user FROM sync_state WHERE id = 1');
+}
+
+/** Archivos de evidencia cuyo registro está en cola y que hay que subir antes de enviar el lote. */
+export function pendingUploads(db: Driver) {
+  return db.all<{ op_id: string; id: string; sha256: string; mime: string; bytes: number; local_path: string }>(
+    `SELECT o.op_id, f.id, f.sha256, f.mime, f.bytes, f.local_path FROM outbox o JOIN evidence_file f ON f.id = o.entity_key
+     WHERE o.status = 'pending' AND o.entity = 'evidence_file' AND f.uploaded_at IS NULL ORDER BY o.seq`);
 }
 
 // ---------- Lecturas para la interfaz ----------
@@ -339,3 +390,5 @@ export function listActions(db: Driver, evaluationId: string) {
   return db.all<{ id: string; question_id: string | null; description: string; impact: number | null; effort: number | null; owner: string | null; due_on: string | null; status: string }>(
     'SELECT id, question_id, description, impact, effort, owner, due_on, status FROM action_item WHERE evaluation_id = ? AND deleted = 0 ORDER BY updated_at', [evaluationId]);
 }
+
+export * from './sync';
