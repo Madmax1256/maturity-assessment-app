@@ -26,7 +26,7 @@ Pendiente para los siguientes incrementos: la API de sincronización (FastAPI + 
 - Funciona sin conexión: la fuente Open Sans y todos los recursos van dentro de la app.
 - Nada se envía solo. La pantalla Sincronizar muestra cada cambio en cola; el envío llega con el servidor del siguiente incremento.
 
-Diferencias con la especificación, a confirmar: se usa React sin Ionic (los estilos vienen del prototipo aprobado) y sql.js con AES-GCM en lugar de SQLCipher, porque así el mismo código de base corre en la tablet, en el navegador y en CI.
+Diferencias con la especificación, aprobadas por Max (2026-10-08): se usa React sin Ionic (los estilos vienen del prototipo aprobado) y sql.js con AES-GCM en lugar de SQLCipher, porque así el mismo código de base corre en la tablet, en el navegador y en CI.
 
 ### Reglas de cálculo aprobadas (Max, 2026-10-08)
 
