@@ -109,7 +109,9 @@ export function setDimensionScope(c: Ctx, evaluationId: string, dimension: strin
 export type AnswerChange =
   | { kind: 'score'; score: Score }
   | { kind: 'not_applicable'; justification: string }
-  | { kind: 'note'; evidenceNote: string };
+  | { kind: 'note'; evidenceNote: string }
+  /** Deja la pregunta pendiente otra vez (por ejemplo, al quitar un "No aplica"). */
+  | { kind: 'clear' };
 
 export function saveAnswer(c: Ctx, evaluationId: string, questionId: string, change: AnswerChange) {
   assertEditable(c, evaluationId);
@@ -124,6 +126,7 @@ export function saveAnswer(c: Ctx, evaluationId: string, questionId: string, cha
     if (change.kind === 'score') Object.assign(next, { score: change.score, not_applicable: 0, na_justification: null });
     if (change.kind === 'not_applicable') Object.assign(next, { score: null, not_applicable: 1, na_justification: change.justification });
     if (change.kind === 'note') next.evidence_note = change.evidenceNote;
+    if (change.kind === 'clear') Object.assign(next, { score: null, not_applicable: 0, na_justification: null });
     const base = prev?.row_version ?? null;
     c.db.run(`INSERT INTO answer (evaluation_id, question_id, score, not_applicable, na_justification, evidence_note, row_version, base_version, updated_by, updated_at)
       VALUES (?,?,?,?,?,?,NULL,?,?,?)
@@ -239,4 +242,100 @@ export function resolveAnswerConflict(c: Ctx, opId: string, choice: 'keep_local'
     }
     audit(c, 'sync.conflict_resolved', 'answer', op.entity_key, { choice });
   });
+}
+
+// ---------- Lecturas para la interfaz ----------
+
+export interface EvaluationRow {
+  id: string; model_id: string; company: string; site: string | null; evaluated_on: string; owner_user_id: string;
+  interviewees: string; status: 'draft' | 'closed'; closed_at: string | null; updated_at: string;
+}
+
+export function listEvaluations(db: Driver): (EvaluationRow & { pending_ops: number })[] {
+  return db.all(`SELECT e.*, (SELECT count(*) FROM outbox o WHERE o.status = 'pending'
+      AND (o.entity_key = e.id OR o.entity_key LIKE e.id || '|%' OR json_extract(o.payload, '$.evaluationId') = e.id)) AS pending_ops
+    FROM evaluation e WHERE e.deleted = 0 ORDER BY e.evaluated_on DESC, e.updated_at DESC`);
+}
+
+export function getEvaluation(db: Driver, id: string): EvaluationRow | undefined {
+  return db.get<EvaluationRow>('SELECT * FROM evaluation WHERE id = ? AND deleted = 0', [id]);
+}
+
+export function updateEvaluationHeader(c: Ctx, id: string, h: { company: string; site: string | null; evaluatedOn: string; interviewees: string[] }) {
+  assertEditable(c, id);
+  if (!h.company.trim()) throw new Error('La empresa es obligatoria');
+  transaction(c.db, () => {
+    c.db.run('UPDATE evaluation SET company = ?, site = ?, evaluated_on = ?, interviewees = ?, updated_at = ? WHERE id = ?',
+      [h.company.trim(), h.site, h.evaluatedOn, JSON.stringify(h.interviewees), nowOf(c), id]);
+    const ev = c.db.get<{ row_version: number | null }>('SELECT row_version FROM evaluation WHERE id = ?', [id]);
+    enqueue(c, 'evaluation', id, 'upsert', { id, ...h }, ev?.row_version ?? null);
+  });
+}
+
+/** Entrada del motor de cálculo a partir de lo guardado en la tablet. */
+export function loadEvaluationInput(db: Driver, id: string) {
+  const ev = getEvaluation(db, id);
+  if (!ev) throw new Error('La evaluación no existe en este dispositivo');
+  const scopes = db.all<{ dimension: string; applies: number | null }>('SELECT dimension, applies FROM dimension_scope WHERE evaluation_id = ?', [id]);
+  const answers = db.all<{ question_id: string; score: number | null; not_applicable: number; na_justification: string | null; evidence_note: string | null }>(
+    'SELECT question_id, score, not_applicable, na_justification, evidence_note FROM answer WHERE evaluation_id = ?', [id]);
+  const files = db.all<{ question_id: string; n: number }>('SELECT question_id, count(*) AS n FROM evidence_file WHERE evaluation_id = ? AND withdrawn = 0 AND question_id IS NOT NULL GROUP BY question_id', [id]);
+  const fileCount = new Map(files.map((f) => [f.question_id, f.n]));
+  return {
+    modelId: ev.model_id,
+    dimensionApplies: Object.fromEntries(scopes.filter((s) => s.applies != null).map((s) => [s.dimension, s.applies === 1])),
+    answers: Object.fromEntries(answers.map((a) => [a.question_id, {
+      questionId: a.question_id,
+      score: a.score as Score | null,
+      notApplicable: a.not_applicable ? { justification: a.na_justification ?? '' } : null,
+      evidenceNote: a.evidence_note,
+      attachments: fileCount.get(a.question_id) ?? 0,
+    }])),
+  };
+}
+
+export function dimensionJustifications(db: Driver, id: string): Record<string, string | null> {
+  return Object.fromEntries(db.all<{ dimension: string; justification: string | null }>('SELECT dimension, justification FROM dimension_scope WHERE evaluation_id = ?', [id]).map((r) => [r.dimension, r.justification]));
+}
+
+export function listEvidence(db: Driver, evaluationId: string, questionId: string) {
+  return db.all<{ id: string; kind: string; mime: string; bytes: number; local_path: string; created_at: string }>(
+    'SELECT id, kind, mime, bytes, local_path, created_at FROM evidence_file WHERE evaluation_id = ? AND question_id = ? AND withdrawn = 0 ORDER BY created_at', [evaluationId, questionId]);
+}
+
+// ---------- Plan de acción ----------
+
+export interface ActionInput {
+  questionId: string | null;
+  description: string;
+  impact: number | null;
+  effort: number | null;
+  owner?: string | null;
+  dueOn?: string | null;
+  status?: 'open' | 'in_progress' | 'done' | 'cancelled';
+}
+
+export function saveAction(c: Ctx, evaluationId: string, a: ActionInput & { id?: string }): string {
+  const ev = c.db.get<{ owner_user_id: string }>('SELECT owner_user_id FROM evaluation WHERE id = ? AND deleted = 0', [evaluationId]);
+  if (!ev) throw new Error('La evaluación no existe en este dispositivo');
+  if (ev.owner_user_id !== c.userId) throw new Error('Solo el evaluador propietario puede editar esta evaluación');
+  for (const [k, v] of [['impacto', a.impact], ['esfuerzo', a.effort]] as const) {
+    if (v != null && !(Number.isInteger(v) && v >= 1 && v <= 5)) throw new Error(`El ${k} va de 1 a 5`);
+  }
+  const id = a.id ?? idOf(c);
+  transaction(c.db, () => {
+    const prev = c.db.get<{ row_version: number | null }>('SELECT row_version FROM action_item WHERE id = ?', [id]);
+    c.db.run(`INSERT INTO action_item (id, evaluation_id, question_id, description, impact, effort, owner, due_on, status, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT (id) DO UPDATE SET description = excluded.description, impact = excluded.impact, effort = excluded.effort,
+        owner = excluded.owner, due_on = excluded.due_on, status = excluded.status, updated_at = excluded.updated_at`,
+      [id, evaluationId, a.questionId, a.description, a.impact, a.effort, a.owner ?? null, a.dueOn ?? null, a.status ?? 'open', nowOf(c)]);
+    enqueue(c, 'action_item', id, 'upsert', { id, evaluationId, ...a }, prev?.row_version ?? null);
+  });
+  return id;
+}
+
+export function listActions(db: Driver, evaluationId: string) {
+  return db.all<{ id: string; question_id: string | null; description: string; impact: number | null; effort: number | null; owner: string | null; due_on: string | null; status: string }>(
+    'SELECT id, question_id, description, impact, effort, owner, due_on, status FROM action_item WHERE evaluation_id = ? AND deleted = 0 ORDER BY updated_at', [evaluationId]);
 }

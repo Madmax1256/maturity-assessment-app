@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  addEvidence, applyResults, closeEvaluation, createEvaluation, migrate, pendingOps, pendingSummary,
-  resolveAnswerConflict, saveAnswer, setDimensionScope, uuidv7, type Ctx, type Driver, type Param,
+  addEvidence, applyResults, closeEvaluation, createEvaluation, getEvaluation, listActions, listEvaluations, loadEvaluationInput,
+  migrate, pendingOps, pendingSummary, resolveAnswerConflict, saveAction, saveAnswer, setDimensionScope, updateEvaluationHeader, uuidv7, type Ctx, type Driver, type Param,
 } from '@fs/db';
 
 // node:sqlite se carga en tiempo de ejecución para que el empaquetador no intente resolverlo.
@@ -59,6 +59,8 @@ describe('guardado local con cola de salida', () => {
     saveAnswer(c, evalId, 'D03-Q03', { kind: 'not_applicable', justification: 'Turno único diurno' });
     const row = c.db.get<{ score: number | null; not_applicable: number }>("SELECT score, not_applicable FROM answer WHERE question_id = 'D03-Q03'");
     expect(row).toEqual({ score: null, not_applicable: 1 });
+    saveAnswer(c, evalId, 'D03-Q03', { kind: 'clear' });
+    expect(c.db.get("SELECT score, not_applicable, na_justification FROM answer WHERE question_id = 'D03-Q03'")).toEqual({ score: null, not_applicable: 0, na_justification: null });
   });
 
   it('excluir una dimensión exige justificación', () => {
@@ -127,5 +129,38 @@ describe('bitácora', () => {
     const rows = c.db.all<{ action: string }>('SELECT action FROM audit_log ORDER BY at');
     expect(rows.map((r) => r.action)).toEqual(['evaluation.create', 'answer.score']);
     expect(() => c.db.run("UPDATE audit_log SET action = 'x'")).toThrow();
+  });
+});
+
+describe('lecturas para la interfaz', () => {
+  it('arma la entrada del motor con alcance, respuestas, No aplica y evidencia', () => {
+    setDimensionScope(c, evalId, 'D1', true);
+    setDimensionScope(c, evalId, 'D8', false, 'Sin tecnología de monitoreo');
+    saveAnswer(c, evalId, 'D01-Q01', { kind: 'score', score: 75 });
+    saveAnswer(c, evalId, 'D01-Q02', { kind: 'not_applicable', justification: 'No hay contratistas' });
+    addEvidence(c, { evaluationId: evalId, questionId: 'D01-Q01', kind: 'photo', localPath: 'ev/1.enc', mime: 'image/jpeg', bytes: 10, sha256: 'a' });
+    const input = loadEvaluationInput(c.db, evalId);
+    expect(input.dimensionApplies).toEqual({ D1: true, D8: false });
+    expect(input.answers['D01-Q01']).toMatchObject({ score: 75, attachments: 1 });
+    expect(input.answers['D01-Q02']).toMatchObject({ score: null, notApplicable: { justification: 'No hay contratistas' } });
+  });
+
+  it('lista evaluaciones con sus cambios pendientes', () => {
+    saveAnswer(c, evalId, 'D01-Q01', { kind: 'score', score: 75 });
+    const [row] = listEvaluations(c.db);
+    expect(row).toMatchObject({ id: evalId, company: 'Empresa de ejemplo', pending_ops: 2 });
+  });
+
+  it('edita antecedentes y exige empresa', () => {
+    updateEvaluationHeader(c, evalId, { company: 'Otra', site: 'Faena', evaluatedOn: '2026-10-09', interviewees: ['Jefe de turno'] });
+    expect(getEvaluation(c.db, evalId)).toMatchObject({ company: 'Otra', site: 'Faena', interviewees: '["Jefe de turno"]' });
+    expect(() => updateEvaluationHeader(c, evalId, { company: ' ', site: null, evaluatedOn: '2026-10-09', interviewees: [] })).toThrow();
+  });
+
+  it('guarda y actualiza acciones del plan validando impacto y esfuerzo', () => {
+    const id = saveAction(c, evalId, { questionId: 'D01-Q01', description: 'Definir RACI', impact: 5, effort: 2 });
+    saveAction(c, evalId, { id, questionId: 'D01-Q01', description: 'Definir RACI por nivel', impact: 5, effort: 3, status: 'in_progress' });
+    expect(listActions(c.db, evalId)).toEqual([expect.objectContaining({ id, description: 'Definir RACI por nivel', effort: 3, status: 'in_progress' })]);
+    expect(() => saveAction(c, evalId, { questionId: null, description: 'x', impact: 7, effort: 1 })).toThrow();
   });
 });
