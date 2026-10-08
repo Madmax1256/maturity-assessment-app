@@ -24,13 +24,45 @@ Reglas: cada cambio se aplica una sola vez aunque se reenvíe; solo el propietar
 | Variable | Valor |
 |---|---|
 | `FS_DATABASE_URL` | Conexión a PostgreSQL |
-| `FS_AUTH_MODE` | `entra` (producción) o `dev` (acepta `Bearer dev:<usuario>`; solo desarrollo) |
+| `FS_AUTH_MODE` | `local` (usuario y clave en este servidor; ver "Modo local"), `entra` (cuentas Microsoft de la empresa) o `dev` (acepta `Bearer dev:<usuario>`; solo desarrollo) |
 | `FS_ENTRA_TENANT_ID`, `FS_ENTRA_AUDIENCE` | Tenant de Vantaz y el identificador de la API registrada en Entra ID |
 | `FS_BLOB_DIR` | Carpeta de evidencias (en Azure, un volumen; el adaptador de Blob Storage usa la misma interfaz en `app/storage.py`) |
 | `FS_CORS_ORIGINS` | Orígenes permitidos, separados por coma (el portal web) |
 | `FS_BOOTSTRAP_ADMINS` | Correos (o ids) que entran como administradores sin invitación; para el primer acceso |
 | `FS_AUTO_ENROLL_ROLE` | Opcional. Si se define (por ejemplo `evaluador`), cualquier cuenta válida entra con ese rol sin invitación |
 | `FS_MAX_FILE_MB` | Tamaño máximo por archivo (25 por omisión) |
+| `FS_PORTAL_DIR` | Carpeta del portal compilado (`apps/portal/dist`). Si se define, el servidor lo publica en `/` |
+| `FS_BACKUP_DIR` | Modo local: carpeta de respaldos automáticos (uno al iniciar si el último tiene más de 20 horas, y uno cada 24 horas) |
+| `FS_BACKUP_KEEP` | Respaldos de la base que se conservan (30 por omisión) |
+| `FS_PG_BIN` | Carpeta `bin` de PostgreSQL, si `pg_dump` no está en el PATH |
+
+## Modo local
+
+Para usar la app sin Entra ID ni Azure: el servidor y el portal corren en un computador de la
+oficina y las tablets sincronizan por la red Wi‑Fi.
+
+- Cada persona entra al portal con usuario y clave. El administrador la crea con una clave inicial
+  y la persona debe cambiarla al entrar. Tras 5 intentos fallidos el usuario queda bloqueado 5
+  minutos. Las sesiones del portal duran 12 horas. Solo se guardan hashes (scrypt para claves,
+  SHA-256 para tokens y códigos).
+- Cada tablet se vincula una vez con un código de un solo uso que el administrador genera en
+  Usuarios y accesos (vence en 15 minutos). La tablet guarda su token en la base cifrada y solo
+  sirve para esa tablet. Quitar acceso a la tablet o a la persona lo invalida.
+- La conexión con las tablets es http dentro de la red local; conviene una red Wi‑Fi con clave y
+  sin invitados.
+
+```bash
+cd server
+export FS_DATABASE_URL=postgresql://postgres@localhost:5432/fs FS_AUTH_MODE=local
+python -m app.admin_cli crear-admin --usuario max --nombre "Max Gajardo"     # primera vez
+FS_PORTAL_DIR=../apps/portal/dist FS_BACKUP_DIR=~/Respaldos/FS \
+  python -m uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
+python -m app.admin_cli respaldo --carpeta ~/Respaldos/FS                    # respaldo manual
+python -m app.admin_cli restaurar --carpeta ~/Respaldos/FS                   # sobre una base vacía
+```
+
+El portal queda en `http://<ip-del-computador>:8000/`. Al generar un código, el portal muestra la
+dirección que hay que escribir en la tablet.
 
 ## Desarrollo
 

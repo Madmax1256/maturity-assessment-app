@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { httpTransport, listConflicts, listRejected, pendingOps, pendingSummary, resolveAnswerConflict, retryRejected, runSync, syncState, type SyncReport } from '@fs/db';
+import { clearLink, getLink, httpTransport, listConflicts, saveLink, listRejected, pendingOps, pendingSummary, resolveAnswerConflict, retryRejected, runSync, syncState, type SyncReport } from '@fs/db';
 import { useApp } from '../app-state';
 import { readEvidenceBytes } from '../storage/evidence-store';
-import { SYNC_URL, deviceInfo, getToken, syncConfigured } from '../sync-config';
+import { deviceInfo, normalizeServerUrl, pairWithServer, syncTarget } from '../sync-config';
 import { PageHead } from '@fs/ui';
 
 const ENTITY: Record<string, string> = {
@@ -28,6 +28,48 @@ const answerText = (a: { score: number | null; notApplicable: boolean; naJustifi
 
 const fmtWhen = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' }) : 'nunca');
 
+/** Vincula la tablet con el servidor del computador usando el código que entrega el administrador. */
+function PairCard({ online }: { online: boolean }) {
+  const { ctx, setUserId, write, toast } = useApp();
+  const [url, setUrl] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const pair = async () => {
+    const server = normalizeServerUrl(url);
+    if (!server) { setMsg('Escribe la dirección del servidor, por ejemplo 192.168.1.20:8000.'); return; }
+    if (code.replace(/[^A-Za-z0-9]/g, '').length !== 8) { setMsg('El código tiene 8 letras y números, por ejemplo ABCD-2345.'); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await pairWithServer(server, code, syncState(ctx.db)!.device_id);
+      const ok = write(() => saveLink(ctx, { server_url: server, token: r.token, user_id: r.user.id, user_name: r.user.name }));
+      if (ok) { setUserId(r.user.id); toast(`Tablet vinculada a ${r.user.name ?? r.user.id}.`); }
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <b>Vincular esta tablet</b>
+      <p className="small muted" style={{ margin: '4px 0 10px' }}>Pide al administrador un código en el portal (Usuarios y accesos, Vincular tablet). La tablet debe estar en la misma red Wi‑Fi que el computador del servidor.</p>
+      <form onSubmit={(e) => { e.preventDefault(); void pair(); }}>
+        <div className="grid2">
+          <div className="field"><label htmlFor="pair-url">Dirección del servidor</label>
+            <input id="pair-url" inputMode="url" placeholder="192.168.1.20:8000" autoCapitalize="none" spellCheck={false} value={url} onChange={(e) => setUrl(e.target.value)} /></div>
+          <div className="field"><label htmlFor="pair-code">Código</label>
+            <input id="pair-code" placeholder="ABCD-2345" autoCapitalize="characters" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} /></div>
+        </div>
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="btn primary" type="submit" disabled={busy || !online}>{busy ? 'Vinculando…' : 'Vincular'}</button>
+          {msg && <span className="small" role="alert" style={{ color: 'var(--action)' }}>{msg}</span>}
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function Sync({ online }: { online: boolean }) {
   const { ctx, rev, write, toast } = useApp();
   void rev;
@@ -39,12 +81,15 @@ export function Sync({ online }: { online: boolean }) {
   const rejected = listRejected(ctx.db);
   const st = syncState(ctx.db);
   const mb = (s.fileBytes / 1024 / 1024).toLocaleString('es-CL', { maximumFractionDigits: 1 });
-  const configured = syncConfigured();
+  const target = syncTarget(ctx.db);
+  const link = getLink(ctx.db);
+  const configured = target != null;
 
   const sync = async () => {
+    if (!target) return;
     setBusy(true);
     try {
-      const r = await runSync(ctx, httpTransport(SYNC_URL, getToken), readEvidenceBytes, deviceInfo());
+      const r = await runSync(ctx, httpTransport(target.url, async () => target.token), readEvidenceBytes, deviceInfo());
       setLast(r);
       write(() => {}, r.rejected || r.conflicts || r.filesFailed.length ? 'Sincronización terminada con observaciones.' : 'Sincronización completa.');
     } catch (e) {
@@ -58,6 +103,14 @@ export function Sync({ online }: { online: boolean }) {
   return (
     <>
       <PageHead title="Sincronizar" subtitle={`Nada se envía solo. Revisa lo que saldrá de esta tablet y confirma. Última sincronización: ${fmtWhen(st?.last_sync_at)}.`} />
+      {!configured && <PairCard online={online} />}
+      {link && (
+        <div className="card row" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 0 }}><b>Vinculada a {link.user_name ?? link.user_id}</b><br /><span className="small muted tnum">Servidor {link.server_url}</span></span>
+          <button className="btn ghost" disabled={ops.length > 0} title={ops.length > 0 ? 'Sincroniza antes de desvincular' : undefined}
+            onClick={() => write(() => clearLink(ctx), 'Tablet desvinculada. Puedes vincularla con un código nuevo.')}>Desvincular</button>
+        </div>
+      )}
       {!online && <div className="card" style={{ marginBottom: 14, borderColor: 'var(--warn)' }}><b>Sin conexión.</b> <span className="muted">Puedes seguir evaluando; todo queda guardado y cifrado en la tablet.</span></div>}
 
       {last && (
@@ -110,10 +163,10 @@ export function Sync({ online }: { online: boolean }) {
           </div>
           <div className="confirm">
             <b>Antes de enviar</b>
-            <p className="small" style={{ margin: '4px 0 10px' }}>Se enviarán {s.operations} cambios{s.files ? ` y ${s.files} archivos (${mb} MB)` : ''} al servidor de Vantaz.</p>
+            <p className="small" style={{ margin: '4px 0 10px' }}>Se enviarán {s.operations} cambios{s.files ? ` y ${s.files} archivos (${mb} MB)` : ''} al servidor{link ? ` (${link.server_url})` : ''}.</p>
             <div className="row">
               <button className="btn primary" disabled={!online || !configured || busy} onClick={() => void sync()}>{busy ? 'Sincronizando…' : 'Confirmar y sincronizar'}</button>
-              {!configured && <span className="small muted">Esta tablet aún no tiene servidor de sincronización configurado; los cambios quedan guardados aquí.</span>}
+              {!configured && <span className="small muted">Vincula la tablet para poder enviar. Mientras tanto, los cambios quedan guardados aquí.</span>}
             </div>
           </div>
         </>

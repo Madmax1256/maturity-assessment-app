@@ -288,6 +288,44 @@ export function syncState(db: Driver) {
   return db.get<{ device_id: string; last_sync_at: string | null; last_sync_user: string | null }>('SELECT device_id, last_sync_at, last_sync_user FROM sync_state WHERE id = 1');
 }
 
+export interface DeviceLink { server_url: string; token: string; user_id: string; user_name: string | null; paired_at: string }
+
+export function getLink(db: Driver): DeviceLink | undefined {
+  return db.get<DeviceLink>('SELECT server_url, token, user_id, user_name, paired_at FROM device_link WHERE id = 1');
+}
+
+/** Persona a la que trabaja la tablet antes de vincularse con un servidor. */
+export const UNLINKED_USER = 'evaluador';
+
+/**
+ * Guarda la vinculación. Las evaluaciones creadas antes de vincular (con el evaluador local) pasan a
+ * la persona vinculada. No se permite cambiar de persona con cambios sin enviar: se enviarían a
+ * nombre de otra.
+ */
+export function saveLink(c: Ctx, link: Omit<DeviceLink, 'paired_at'>) {
+  transaction(c.db, () => {
+    const prev = getLink(c.db);
+    const pending = c.db.get<{ n: number }>("SELECT count(*) AS n FROM outbox WHERE status IN ('pending', 'conflict', 'rejected')")?.n ?? 0;
+    if (prev && prev.user_id !== link.user_id && pending > 0) {
+      throw new Error('Esta tablet tiene cambios sin enviar de otra persona. Sincroniza antes de vincularla a alguien más.');
+    }
+    c.db.run(`INSERT INTO device_link (id, server_url, token, user_id, user_name, paired_at) VALUES (1, ?, ?, ?, ?, ?)
+              ON CONFLICT (id) DO UPDATE SET server_url = excluded.server_url, token = excluded.token, user_id = excluded.user_id,
+              user_name = excluded.user_name, paired_at = excluded.paired_at`,
+      [link.server_url, link.token, link.user_id, link.user_name, nowOf(c)]);
+    c.db.run('UPDATE evaluation SET owner_user_id = ? WHERE owner_user_id = ?', [link.user_id, UNLINKED_USER]);
+    c.db.run(`INSERT INTO audit_log (id, at, user_id, action, entity, entity_key, detail) VALUES (?, ?, ?, 'device.linked', NULL, NULL, ?)`,
+      [idOf(c), nowOf(c), link.user_id, JSON.stringify({ server: link.server_url })]);
+  });
+}
+
+/** Desvincula. Solo sin cambios pendientes, para no perder lo que falta enviar. */
+export function clearLink(c: Ctx) {
+  const pending = c.db.get<{ n: number }>("SELECT count(*) AS n FROM outbox WHERE status IN ('pending', 'conflict', 'rejected')")?.n ?? 0;
+  if (pending > 0) throw new Error('Hay cambios sin enviar. Sincroniza antes de desvincular la tablet.');
+  c.db.run('DELETE FROM device_link WHERE id = 1');
+}
+
 /** Archivos de evidencia cuyo registro está en cola y que hay que subir antes de enviar el lote. */
 export function pendingUploads(db: Driver) {
   return db.all<{ op_id: string; id: string; sha256: string; mime: string; bytes: number; local_path: string }>(

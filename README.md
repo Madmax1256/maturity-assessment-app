@@ -6,7 +6,7 @@ Aplicación de evaluación de madurez organizacional con 12 dimensiones, 128 pre
 
 App offline-first para aplicar en terreno, desde tablets Samsung con Android, el diagnóstico de madurez en gestión de fatiga y somnolencia (modelo V01: 12 dimensiones, 128 preguntas). La especificación completa está en el documento "Especificación App Diagnóstico de Fatiga y Somnolencia".
 
-### Estado: incrementos 1 a 4
+### Estado: incrementos 1 a 5
 
 | Paquete | Qué hace | Requisitos que cubre |
 |---|---|---|
@@ -16,11 +16,12 @@ App offline-first para aplicar en terreno, desde tablets Samsung con Android, el
 | `tools/import-model.ts` | Importa el Excel y entrega un informe de validación; no escribe nada si hay errores bloqueantes | RF-01 |
 | `tools/parity/make_cases.py` | Genera casos de paridad recalculando el Excel real con LibreOffice | Gate "resultados = Excel corregido" |
 | `server` | Servidor de sincronización (FastAPI + PostgreSQL): recibe archivos y cambios confirmados desde la tablet, valida propietario, catálogo y cierre, detecta conflictos; ver `server/README.md` | Sección 7 |
+| Modo local (`FS_AUTH_MODE=local`) | Sin Entra ID: usuario y clave en el portal, tablets vinculadas con un código de un solo uso, portal publicado por el mismo servidor y respaldos automáticos; ver `server/README.md` | Decisión de Max, 2026-10-08 |
 | `apps/portal` | Portal web (navegador): panel, evaluaciones con resultados, respuestas, evidencia y plan; usuarios e invitaciones, tablets, modelo y bitácora para el administrador | Secciones 6 y 8 |
 | `packages/ui` | Estilos de marca Vantaz y componentes de resultados compartidos por la tablet y el portal | Sección 8 |
 | `apps/tablet` | App de terreno (React + Vite, empaquetada con Capacitor para Android): evaluaciones, antecedentes y alcance, captura con No aplica y evidencia, resultados, plan de acción y cola de sincronización | RF-02 a RF-09, sección 7 |
 
-Pendiente para los siguientes incrementos: inicio de sesión con Entra ID en la tablet y el portal (el servidor ya valida tokens de Entra), el despliegue en Azure con Blob Storage, el informe PDF y la exportación a Excel.
+Pendiente para los siguientes incrementos: instalador para el computador del administrador, el informe PDF y la exportación a Excel. Entra ID y Azure quedan como opción futura (el servidor ya valida tokens de Entra).
 
 ### App de tablet: cómo guarda los datos
 

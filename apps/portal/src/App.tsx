@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { vantazLogo } from '@fs/ui';
-import { API_URL, AUTH_MODE, api, hasToken, setToken, type Me } from './api';
+import { Dialog, vantazLogo } from '@fs/ui';
+import { SESSION_EXPIRED, api, hasToken, loadAuthMode, setToken, type AuthMode, type Me } from './api';
+import { ChangePassword, SignIn } from './account';
 import { SessionProvider, href, useRoute, type Route } from './state';
 import { Panel } from './screens/Panel';
 import { Evaluations } from './screens/Evaluations';
@@ -21,56 +22,43 @@ const ICON: Record<string, ReactNode> = {
 
 const ROLE_LABEL = { administrador: 'Administrador', supervisor: 'Supervisor', evaluador: 'Evaluador' } as const;
 
-function SignIn({ onSignedIn, error }: { onSignedIn(me: Me): void; error: string | null }) {
-  const [user, setUser] = useState('');
-  const [msg, setMsg] = useState<string | null>(error);
-  const submit = async () => {
-    if (!user.trim()) { setMsg('Escribe tu usuario.'); return; }
-    setToken(`dev:${user.trim()}`);
-    try { onSignedIn(await api<Me>('/v1/me')); } catch (e) { setToken(null); setMsg(e instanceof Error ? e.message : String(e)); }
-  };
-  return (
-    <main className="signin">
-      <div className="card">
-        <img src={vantazLogo} alt="Vantaz" height={36} />
-        <h1>Diagnóstico de Fatiga y Somnolencia</h1>
-        {AUTH_MODE === 'dev' ? (
-          <>
-            <p className="small muted">Entrada de desarrollo. En producción se entra con la cuenta Microsoft de la empresa.</p>
-            <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
-              <div className="field"><label htmlFor="dev-user">Usuario</label><input id="dev-user" value={user} onChange={(e) => setUser(e.target.value)} autoComplete="username" /></div>
-              <button className="btn primary" type="submit" style={{ marginTop: 12, width: '100%' }}>Entrar</button>
-            </form>
-          </>
-        ) : (
-          <p className="small">El inicio de sesión con la cuenta Microsoft de la empresa se habilita cuando TI registre la aplicación en Entra ID.</p>
-        )}
-        {msg && <p className="small" role="alert" style={{ color: 'var(--action)', margin: '10px 0 0' }}>{msg}</p>}
-        {!API_URL && <p className="small" style={{ color: 'var(--warn)' }}>Falta configurar la dirección del servidor (VITE_API_URL).</p>}
-      </div>
-    </main>
-  );
-}
-
 export function App() {
   const route = useRoute();
   const [me, setMe] = useState<Me | null>(null);
-  const [booting, setBooting] = useState(hasToken());
+  const [mode, setMode] = useState<AuthMode | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [changingPw, setChangingPw] = useState(false);
   const [toastText, setToast] = useState<string | null>(null);
   const toast = useCallback((t: string) => {
     setToast(t);
     window.setTimeout(() => setToast((c) => (c === t ? null : c)), 3000);
   }, []);
-  const signOut = useCallback(() => { setToken(null); setMe(null); location.hash = '#/panel'; }, []);
+  const signOut = useCallback(() => {
+    if (mode === 'local' && hasToken()) void api('/v1/auth/logout', { method: 'POST' }).catch(() => {});
+    setToken(null); setMe(null); setChangingPw(false); location.hash = '#/panel';
+  }, [mode]);
 
   useEffect(() => {
-    if (!hasToken()) return;
-    api<Me>('/v1/me').then(setMe).catch((e: unknown) => { setToken(null); setAuthError(e instanceof Error ? e.message : String(e)); }).finally(() => setBooting(false));
+    void (async () => {
+      const m = await loadAuthMode();
+      if (hasToken()) {
+        try { setMe(await api<Me>('/v1/me')); } catch (e) { setToken(null); setAuthError(e instanceof Error ? e.message : String(e)); }
+      }
+      setMode(m);
+    })();
   }, []);
 
-  if (booting) return <main className="signin"><div className="card muted">Cargando…</div></main>;
-  if (!me) return <SignIn onSignedIn={setMe} error={authError} />;
+  useEffect(() => {
+    const expired = () => { setToken(null); setMe(null); setAuthError('Tu sesión terminó. Vuelve a entrar.'); };
+    addEventListener(SESSION_EXPIRED, expired);
+    return () => removeEventListener(SESSION_EXPIRED, expired);
+  }, []);
+
+  if (!mode) return <main className="signin"><div className="card muted">Cargando…</div></main>;
+  if (!me) return <SignIn mode={mode} onSignedIn={(m) => { setAuthError(null); setMe(m); }} error={authError} />;
+  if (me.mustChangePassword) {
+    return <ChangePassword forced onCancel={signOut} onDone={() => { setMe({ ...me, mustChangePassword: false }); toast('Clave guardada.'); }} />;
+  }
 
   const admin = me.role === 'administrador';
   const page = route.page === 'evaluacion' ? 'evaluaciones' : route.page;
@@ -83,13 +71,14 @@ export function App() {
   );
 
   return (
-    <SessionProvider value={{ me, toast, signOut }}>
+    <SessionProvider value={{ me, mode, toast, signOut }}>
       <div className="app">
         <header className="top">
           <span className="logo"><img src={vantazLogo} alt="Vantaz" /></span>
           <h1>Diagnóstico de Fatiga y Somnolencia<small>Portal de seguimiento</small></h1>
           <span className="spacer" />
           <span className="chip"><span className="dot" />{me.name ?? me.email ?? me.id} · {ROLE_LABEL[me.role]}</span>
+          {mode === 'local' && <button className="btn ghost" onClick={() => setChangingPw(true)}>Cambiar clave</button>}
           <button className="btn ghost" onClick={signOut}>Salir</button>
         </header>
         <div className="shell">
@@ -116,6 +105,11 @@ export function App() {
               : <AuditLog />}
           </main>
         </div>
+        {changingPw && (
+          <Dialog title="Cambiar mi clave" onClose={() => setChangingPw(false)}>
+            <ChangePassword forced={false} onCancel={() => setChangingPw(false)} onDone={() => { setChangingPw(false); toast('Clave cambiada.'); }} />
+          </Dialog>
+        )}
         {toastText && <div className="toast" role="status">{toastText}</div>}
       </div>
     </SessionProvider>

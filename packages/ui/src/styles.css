@@ -189,3 +189,4 @@ details.qblock[open]>summary{border-bottom:1px solid var(--line)}
 details.qblock .tablewrap{padding:0 8px 8px}
 .thumbbtn{border:0;padding:0;background:none;border-radius:6px;overflow:hidden;line-height:0}
 .thumbbtn img{width:64px;height:64px;object-fit:cover}
+.paircode{font-size:32px;font-weight:700;letter-spacing:.12em;text-align:center;margin:10px 0;padding:12px;border-radius:10px;background:var(--surface-2,#f2f4f7)}

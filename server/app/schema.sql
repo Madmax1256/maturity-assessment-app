@@ -169,3 +169,34 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 INSERT INTO schema_migrations (version) VALUES (2) ON CONFLICT DO NOTHING;
+
+-- Versión 3: modo local (FS_AUTH_MODE=local). Usuario y clave propios en lugar de Entra ID;
+-- sesiones del portal y tokens de tablet. Solo se guardan hashes.
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS app_user_username ON app_user (lower(username)) WHERE username IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS auth_token (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('web', 'device')),
+  device_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS auth_token_user ON auth_token (user_id) WHERE revoked_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS pairing_code (
+  code_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  device_id TEXT
+);
+
+INSERT INTO schema_migrations (version) VALUES (3) ON CONFLICT DO NOTHING;

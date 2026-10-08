@@ -6,6 +6,8 @@ export type View = 'home' | 'header' | 'capture' | 'results' | 'plan' | 'sync';
 
 interface AppState {
   ctx: Ctx;
+  /** Cambia la persona de la tablet al vincularla con el servidor. */
+  setUserId(id: string): void;
   local: LocalDb;
   view: View;
   evaluationId: string | null;
@@ -20,7 +22,8 @@ interface AppState {
 
 const Ctx = createContext<AppState | null>(null);
 
-export function AppProvider({ local, userId, children }: { local: LocalDb; userId: string; children: ReactNode }) {
+export function AppProvider({ local, userId: initialUser, children }: { local: LocalDb; userId: string; children: ReactNode }) {
+  const [userId, setUserId] = useState(initialUser);
   const [view, setView] = useState<View>('home');
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
   const [rev, setRev] = useState(0);
@@ -46,7 +49,7 @@ export function AppProvider({ local, userId, children }: { local: LocalDb; userI
     setView(v);
     window.scrollTo(0, 0);
   }, []);
-  return <Ctx.Provider value={{ ctx, local, view, evaluationId, rev, go, write, toast, toastText }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ctx, setUserId, local, view, evaluationId, rev, go, write, toast, toastText }}>{children}</Ctx.Provider>;
 }
 
 export function useApp() {

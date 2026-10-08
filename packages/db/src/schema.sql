@@ -138,3 +138,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE TRIGGER IF NOT EXISTS audit_log_append_only BEFORE UPDATE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'La bitácora no se edita'); END;
+
+-- Vinculación con el servidor (modo local): dirección, token propio de la tablet y la persona a
+-- quien quedó asignada. Vive dentro de la base cifrada.
+CREATE TABLE IF NOT EXISTS device_link (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  server_url TEXT NOT NULL,
+  token TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  user_name TEXT,
+  paired_at TEXT NOT NULL
+);

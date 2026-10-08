@@ -25,6 +25,7 @@ class Account:
     name: str | None
     email: str | None
     role: str
+    must_change_password: bool = False
 
     @property
     def sees_all(self) -> bool:
@@ -38,6 +39,8 @@ class Account:
 def resolve_account(conn: Connection, u: User, s: Settings) -> Account:
     """Vincula el token con una persona registrada. Sin invitación no hay acceso."""
     row = conn.execute("SELECT * FROM app_user WHERE id = %s", (u.id,)).fetchone()
+    if row is None and s.auth_mode == "local":
+        raise HTTPException(403, "Tu cuenta no tiene acceso a la aplicación.")
     if row is None and u.email:
         invited = conn.execute("SELECT * FROM app_user WHERE lower(email) = lower(%s) AND status = 'invited'", (u.email,)).fetchone()
         if invited:
@@ -59,7 +62,8 @@ def resolve_account(conn: Connection, u: User, s: Settings) -> Account:
         raise HTTPException(403, "Tu acceso a la aplicación fue retirado.")
     conn.execute("UPDATE app_user SET last_seen_at = now(), name = coalesce(name, %s), email = coalesce(email, %s) WHERE id = %s",
                  (u.name, u.email, u.id))
-    return Account(id=row["id"], name=row["name"] or u.name, email=row["email"] or u.email, role=row["role"])
+    return Account(id=row["id"], name=row["name"] or u.name, email=row["email"] or u.email, role=row["role"],
+                   must_change_password=bool(row.get("must_change_password")))
 
 
 def audit(conn: Connection, user_id: str, action: str, entity: str | None, key: str | None, detail: object = None) -> None:

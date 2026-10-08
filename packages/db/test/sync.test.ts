@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  addEvidence, closeEvaluation, createEvaluation, listConflicts, listRejected, migrate, pendingAudit, pendingSummary, resolveAnswerConflict,
+  addEvidence, clearLink, closeEvaluation, getLink, saveLink, createEvaluation, listConflicts, listRejected, migrate, pendingAudit, pendingSummary, resolveAnswerConflict,
   retryRejected, runSync, saveAction, saveAnswer, setDimensionScope, syncState, type Ctx, type Driver, type OpResult, type Param, type PushBody, type SyncTransport,
 } from '@fs/db';
 
@@ -139,5 +139,32 @@ describe('runSync', () => {
     const r = await runSync(c, srv, read);
     expect(r.accepted).toBe(3);
     expect(srv.pushes[0]!.ops.at(-1)).toMatchObject({ entity: 'evaluation', op: 'close' });
+  });
+});
+
+describe('vinculación con el servidor', () => {
+  const link = { server_url: 'http://192.168.1.20:8000', token: 'fs_abc', user_id: 'ana', user_name: 'Ana' };
+
+  it('pasa las evaluaciones del evaluador local a la persona vinculada', () => {
+    saveLink(c, link);
+    expect(getLink(c.db)).toMatchObject(link);
+    const ana: Ctx = { ...c, userId: 'ana' };
+    expect(c.db.get<{ owner_user_id: string }>('SELECT owner_user_id FROM evaluation WHERE id = ?', [ev])!.owner_user_id).toBe('ana');
+    saveAnswer(ana, ev, 'D01-Q01', { kind: 'score', score: 50 });
+    expect(c.db.all('SELECT * FROM audit_log WHERE action = ?', ['device.linked'])).toHaveLength(1);
+  });
+
+  it('no cambia de persona ni se desvincula con cambios sin enviar', async () => {
+    saveLink(c, link);
+    expect(() => saveLink(c, { ...link, user_id: 'luis', user_name: 'Luis' })).toThrow(/cambios sin enviar/);
+    expect(() => clearLink(c)).toThrow(/cambios sin enviar/);
+    // La misma persona puede volver a vincularse (por ejemplo, con un token nuevo).
+    saveLink(c, { ...link, token: 'fs_nuevo' });
+    expect(getLink(c.db)!.token).toBe('fs_nuevo');
+    await runSync({ ...c, userId: 'ana' }, srv, read);
+    clearLink(c);
+    expect(getLink(c.db)).toBeUndefined();
+    saveLink(c, { ...link, user_id: 'luis', user_name: 'Luis' });
+    expect(getLink(c.db)!.user_id).toBe('luis');
   });
 });

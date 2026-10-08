@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { ApiError, api, type Me } from './api';
+import { ApiError, api, type AuthMode, type Me } from './api';
 
 /** Rutas con hash, para que recargar o compartir un enlace abra la misma pantalla. */
 export type Route =
@@ -39,7 +39,7 @@ export function useLoad<T>(path: string | null) {
   return { ...state, reload: useCallback(() => setN((x) => x + 1), []) };
 }
 
-interface Session { me: Me; toast(t: string): void; signOut(): void }
+interface Session { me: Me; mode: AuthMode; toast(t: string): void; signOut(): void }
 const Ctx = createContext<Session | null>(null);
 export const SessionProvider = ({ value, children }: { value: Session; children: ReactNode }) => <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 export function useSession() {
