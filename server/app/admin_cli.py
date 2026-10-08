@@ -3,6 +3,7 @@
     python -m app.admin_cli crear-admin --usuario max --nombre "Max Gajardo"
     python -m app.admin_cli respaldo --carpeta D:/Respaldos/FS
     python -m app.admin_cli restaurar --carpeta D:/Respaldos/FS [--archivo fs-20261008-120000.dump]
+    python -m app.admin_cli hay-admin        # sale con 0 si ya existe un administrador con clave
 
 crear-admin crea (o restablece) una cuenta de administrador con usuario y clave. La clave se pide por
 teclado y no queda en el historial. Es la forma de entrar la primera vez: después, el administrador
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import re
 import sys
 import uuid
@@ -63,8 +65,15 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("restaurar", help="Restaura un respaldo sobre una base vacía")
     r.add_argument("--carpeta", required=True)
     r.add_argument("--archivo", default=None, help="Respaldo de la base a usar; por omisión, el más reciente")
+    sub.add_parser("hay-admin", help="Sale con 0 si ya existe un administrador activo con clave")
     a = p.parse_args(argv)
     s = Settings()
+    if a.cmd == "hay-admin":
+        with psycopg.connect(s.database_url) as conn:
+            conn.execute((Path(__file__).parent / "schema.sql").read_text(encoding="utf-8"))
+            n = conn.execute("""SELECT count(*) FROM app_user WHERE role = 'administrador' AND status = 'active'
+                                AND password_hash IS NOT NULL""").fetchone()[0]
+        return 0 if n else 1
     if a.cmd == "respaldo":
         dest = Path(a.carpeta) if a.carpeta else s.backup_dir
         if not dest:
@@ -88,10 +97,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Restaurado desde {dump.name}.")
         return 0
     if a.cmd == "crear-admin":
-        pw = getpass.getpass("Clave (mínimo 10 caracteres): ")
-        if pw != getpass.getpass("Repite la clave: "):
-            print("Las claves no coinciden.", file=sys.stderr)
-            return 1
+        # El instalador pasa la clave en FS_ADMIN_PASSWORD, para que no quede en la línea de comandos.
+        pw = os.environ.pop("FS_ADMIN_PASSWORD", None)
+        if pw is None:
+            pw = getpass.getpass("Clave (mínimo 10 caracteres): ")
+            if pw != getpass.getpass("Repite la clave: "):
+                print("Las claves no coinciden.", file=sys.stderr)
+                return 1
         try:
             uid = create_admin(s.database_url, a.usuario, a.nombre or a.usuario, pw)
         except ValueError as e:

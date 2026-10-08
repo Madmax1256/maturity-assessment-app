@@ -73,3 +73,70 @@ jobs:
             FS_CORS_ORIGINS=http://localhost:4173 python -m uvicorn app.main:create_app --factory --port 8100 &)
           for i in $(seq 1 30); do curl -sf http://localhost:8100/health >/dev/null && break; sleep 1; done
           node e2e/local-mode.cjs
+
+  windows:
+    # Instala el paquete para Windows en una máquina Windows real y lo prueba de punta a punta.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Armar el zip del instalador
+        run: |
+          npm run build:portal
+          npm run build:tablet
+          python deploy/windows/empaquetar.py dist
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-windows
+          path: dist/*.zip
+      - name: Instalar como lo haría el usuario (sin tarea programada ni firewall)
+        run: |
+          Expand-Archive (Get-Item dist\*.zip).FullName -DestinationPath "$env:RUNNER_TEMP\pkg"
+          $dir = (Get-ChildItem "$env:RUNNER_TEMP\pkg")[0].FullName
+          $env:FS_ADMIN_PASSWORD = 'clave-admin-e2e'
+          & "$dir\instalar.ps1" -NoInteractivo -Usuario max -Nombre 'Max Gajardo' -SinTareaProgramada -SinFirewall -SinAccesoDirecto -CarpetaRespaldo "$env:RUNNER_TEMP\respaldos"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Respaldo automático al iniciar
+        run: |
+          for ($i = 0; $i -lt 30 -and -not (Test-Path "$env:RUNNER_TEMP\respaldos\db\*.dump"); $i++) { Start-Sleep 1 }
+          if (-not (Test-Path "$env:RUNNER_TEMP\respaldos\db\*.dump")) { Get-Content "$env:LOCALAPPDATA\FS-Diagnostico\logs\servidor.log"; exit 1 }
+          Get-ChildItem "$env:RUNNER_TEMP\respaldos\db"
+      - name: Reiniciar con la tablet de prueba permitida
+        run: |
+          $d = "$env:LOCALAPPDATA\FS-Diagnostico"
+          Add-Content "$d\config.env" 'FS_CORS_ORIGINS=http://localhost:4173'
+          & "$d\detener.ps1"
+          Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$d\iniciar.ps1")
+          for ($i = 0; $i -lt 60; $i++) { try { if ((Invoke-WebRequest http://localhost:8000/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { break } } catch { }; Start-Sleep 1 }
+          (Invoke-WebRequest http://localhost:8000/v1/auth/config -UseBasicParsing).Content
+      - name: Portal, vinculación y sincronización en Windows
+        shell: bash
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install chromium
+          npm run preview -w apps/tablet -- --port 4173 --strictPort &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
+          SERVER_URL=http://localhost:8000 node e2e/local-mode.cjs
+      - name: Respaldo manual y actualización conservando los datos
+        run: |
+          $d = "$env:LOCALAPPDATA\FS-Diagnostico"
+          $env:FS_NO_PAUSE = '1'
+          & "$d\respaldar.ps1"
+          $dir = (Get-ChildItem "$env:RUNNER_TEMP\pkg")[0].FullName
+          & "$dir\instalar.ps1" -NoInteractivo -SinTareaProgramada -SinFirewall -SinAccesoDirecto
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $r = Invoke-RestMethod -Method Post -Uri http://localhost:8000/v1/auth/login -ContentType 'application/json' -Body '{"username":"max","password":"clave-admin-e2e"}'
+          $ev = Invoke-RestMethod -Uri http://localhost:8000/v1/evaluations -Headers @{ authorization = "Bearer $($r.token)" }
+          if (-not ($ev | Where-Object { $_.company -eq 'Minera Local' })) { Write-Host 'Se perdió la evaluación al actualizar'; exit 1 }
+          Write-Host "Evaluaciones después de actualizar: $($ev.Count)"
+      - name: Registros del servidor
+        if: always()
+        run: Get-Content "$env:LOCALAPPDATA\FS-Diagnostico\logs\servidor.log" -Tail 80 -ErrorAction SilentlyContinue
