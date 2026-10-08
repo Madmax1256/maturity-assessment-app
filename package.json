@@ -1,0 +1,23 @@
+{
+  "name": "fs-diagnostico",
+  "private": true,
+  "version": "0.1.0",
+  "description": "App offline-first de Diagnóstico de Madurez en Gestión de Fatiga y Somnolencia (Vantaz)",
+  "workspaces": [
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "import-model": "node tools/import-model.ts",
+    "parity:cases": "python3 tools/parity/make_cases.py"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "exceljs": "^4.4.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
