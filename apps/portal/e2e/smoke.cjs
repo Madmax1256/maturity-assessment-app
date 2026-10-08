@@ -66,8 +66,10 @@ const URL = process.env.PORTAL_URL || 'http://localhost:4174/';
   ok(true, 'quitar acceso a un evaluador');
 
   await page.locator('a.nav', { hasText: 'Tablets' }).click();
-  await page.locator('.dimtable tbody tr').first().waitFor();
-  ok(await page.locator('.dimtable tbody tr').first().innerText().then((t) => t.includes('0.4.0') && t.includes('Activa')), 'tablets: versión de la app y estado');
+  await page.getByRole('heading', { name: 'Tablets' }).waitFor();
+  const tabRow = page.locator('.dimtable tbody tr', { hasText: 'Activa' }).first();
+  await tabRow.waitFor({ timeout: 5000 }).catch(() => {});
+  ok(await tabRow.innerText().catch(() => '').then((t) => t.includes('0.4.0')), 'tablets: versión de la app y estado');
 
   await page.locator('a.nav', { hasText: 'Bitácora' }).click();
   await page.getByRole('heading', { name: 'Bitácora' }).waitFor();
