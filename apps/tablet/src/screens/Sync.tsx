@@ -121,6 +121,7 @@ export function Sync({ online }: { online: boolean }) {
             {last.accepted} cambios aceptados{last.filesUploaded ? `, ${last.filesUploaded} archivos subidos` : ''}
             {last.rejected ? `, ${last.rejected} rechazados` : ''}{last.conflicts ? `, ${last.conflicts} en conflicto` : ''}.
             {last.filesFailed.length ? ` ${last.filesFailed.length} archivos no se pudieron subir y quedan en cola: ${last.filesFailed[0]!.reason}.` : ''}
+            {last.downloaded ? ` Llegaron ${last.downloaded} evaluaciones iniciadas en otro equipo.` : ' Los avances hechos en tus otros equipos quedaron al día.'}
           </p>
         </div>
       )}
@@ -152,7 +153,11 @@ export function Sync({ online }: { online: boolean }) {
       )}
 
       {ops.length === 0 ? (
-        <div className="card"><b>Todo está sincronizado.</b><p className="small muted" style={{ margin: '4px 0 0' }}>No hay cambios pendientes en esta tablet.</p></div>
+        <div className="card">
+          <b>No hay cambios pendientes en este equipo.</b>
+          <p className="small muted" style={{ margin: '4px 0 10px' }}>Si avanzaste una evaluación en otro equipo (tablet o computador), tráela para continuarla aquí.</p>
+          <button className="btn primary" disabled={!online || !configured || busy} onClick={() => void sync()}>{busy ? 'Trayendo…' : 'Traer avances del servidor'}</button>
+        </div>
       ) : (
         <>
           <div className="card" style={{ marginBottom: 14 }}>
@@ -164,7 +169,7 @@ export function Sync({ online }: { online: boolean }) {
           </div>
           <div className="confirm">
             <b>Antes de enviar</b>
-            <p className="small" style={{ margin: '4px 0 10px' }}>Se enviarán {s.operations} cambios{s.files ? ` y ${s.files} archivos (${mb} MB)` : ''} al servidor{link ? ` (${link.server_url})` : ''}.</p>
+            <p className="small" style={{ margin: '4px 0 10px' }}>Se enviarán {s.operations} cambios{s.files ? ` y ${s.files} archivos (${mb} MB)` : ''} al servidor{link ? ` (${link.server_url})` : ''}. Después se traerán los avances hechos en tus otros equipos.</p>
             <div className="row">
               <button className="btn primary" disabled={!online || !configured || busy} onClick={() => void sync()}>{busy ? 'Sincronizando…' : 'Confirmar y sincronizar'}</button>
               {!configured && <span className="small muted">Vincula la tablet para poder enviar. Mientras tanto, los cambios quedan guardados aquí.</span>}

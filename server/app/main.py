@@ -110,7 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stop.set()
         pool.close()
 
-    app = FastAPI(title="Diagnóstico F&S: sincronización", version="0.5.1", lifespan=lifespan)
+    app = FastAPI(title="Diagnóstico F&S: sincronización", version="0.6.0", lifespan=lifespan)
     # La app de la tablet (Capacitor) llama desde https://localhost; en modo local se permite por omisión.
     origins = s.cors_origins or (["https://localhost", "capacitor://localhost"] if s.auth_mode == "local" else [])
     if origins:
@@ -317,6 +317,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 cur.execute("SELECT now() AS t")
                 server_time = cur.fetchone()["t"].isoformat()
         return {"results": results, "auditReceived": len(body.audit), "serverTime": server_time}
+
+    @app.get("/v1/sync/pull")
+    def pull(since: int = 0, user: Account = Depends(current_user)):
+        """Evaluaciones propias que cambiaron desde la versión `since`, completas, para continuarlas en otro
+        equipo (tablet o computador). La tablet la pide solo dentro de una sincronización confirmada."""
+        with pool.connection() as conn:
+            evs = conn.execute("""SELECT e.id, e.model_id, e.company, e.site, e.evaluated_on::text AS evaluated_on, e.owner_user_id,
+                                  e.interviewees, e.status, e.closed_at, e.row_version, e.updated_at,
+                                  greatest(e.row_version,
+                                    coalesce((SELECT max(row_version) FROM dimension_scope WHERE evaluation_id = e.id), 0),
+                                    coalesce((SELECT max(row_version) FROM answer WHERE evaluation_id = e.id), 0),
+                                    coalesce((SELECT max(row_version) FROM evidence_file WHERE evaluation_id = e.id), 0),
+                                    coalesce((SELECT max(row_version) FROM action_item WHERE evaluation_id = e.id), 0)) AS version
+                                  FROM evaluation e WHERE e.owner_user_id = %s""", (user.id,)).fetchall()
+            evs = [e for e in evs if e["version"] > since]
+            ids = [e["id"] for e in evs]
+            rows = lambda sql: conn.execute(sql, (ids,)).fetchall() if ids else []  # noqa: E731
+            out = {"evaluations": evs,
+                   "scopes": rows("SELECT evaluation_id, dimension, applies, justification, row_version FROM dimension_scope WHERE evaluation_id = ANY(%s)"),
+                   "answers": rows("""SELECT evaluation_id, question_id, score, not_applicable, na_justification, evidence_note, row_version,
+                                      updated_by, updated_at FROM answer WHERE evaluation_id = ANY(%s)"""),
+                   "evidence": rows("""SELECT id, evaluation_id, question_id, kind, mime, bytes, sha256, source, created_by, received_at
+                                       FROM evidence_file WHERE evaluation_id = ANY(%s) AND NOT withdrawn"""),
+                   "actions": rows("""SELECT id, evaluation_id, question_id, description, impact, effort, owner, due_on::text AS due_on, status,
+                                      row_version, updated_at FROM action_item WHERE evaluation_id = ANY(%s)""")}
+            out["cursor"] = max([since, *(e["version"] for e in evs)])
+            for e in evs:
+                del e["version"]
+        return out
 
     # ---------- consulta (portal web) ----------
 

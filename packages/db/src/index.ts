@@ -430,3 +430,4 @@ export function listActions(db: Driver, evaluationId: string) {
 }
 
 export * from './sync';
+export * from './pull';

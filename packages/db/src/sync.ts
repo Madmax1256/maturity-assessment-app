@@ -3,6 +3,7 @@
 // evaluador confirma lo que va a salir de la tablet.
 
 import { applyResults, markSynced, pendingAudit, pendingOps, pendingUploads, syncState, type Ctx, type OpResult } from './index';
+import { applyPull, pullCursor, type PullData } from './pull';
 
 export interface PushBody {
   deviceId: string;
@@ -17,6 +18,8 @@ export interface SyncTransport {
   missingFiles(sha256: string[]): Promise<string[]>;
   uploadFile(sha256: string, mime: string, data: Uint8Array): Promise<void>;
   push(body: PushBody): Promise<{ results: OpResult[] }>;
+  /** Evaluaciones propias que cambiaron en el servidor desde `since` (para continuar en otro equipo). */
+  pull?(since: number): Promise<PullData>;
 }
 
 export interface SyncReport {
@@ -26,6 +29,8 @@ export interface SyncReport {
   filesUploaded: number;
   /** Archivos que no se pudieron leer o subir; su registro queda en cola para la próxima vez. */
   filesFailed: { id: string; reason: string }[];
+  /** Evaluaciones iniciadas en otro equipo que llegaron a este. */
+  downloaded: number;
 }
 
 const BATCH = 200;
@@ -34,7 +39,7 @@ export async function runSync(c: Ctx, t: SyncTransport, readFile: (localPath: st
   device: { appVersion?: string; deviceModel?: string } = {}): Promise<SyncReport> {
   const state = syncState(c.db);
   if (!state) throw new Error('La tablet no tiene identificador de dispositivo');
-  const report: SyncReport = { accepted: 0, rejected: 0, conflicts: 0, filesUploaded: 0, filesFailed: [] };
+  const report: SyncReport = { accepted: 0, rejected: 0, conflicts: 0, filesUploaded: 0, filesFailed: [], downloaded: 0 };
 
   // 1. Archivos primero: el servidor solo acepta el registro de una evidencia cuyo archivo ya tiene.
   const skip = new Set<string>();
@@ -83,6 +88,9 @@ export async function runSync(c: Ctx, t: SyncTransport, readFile: (localPath: st
     markSynced(c, lastAudit);
   }
   if (lastAudit == null) markSynced(c, null);
+
+  // 4. Lo que cambió en el servidor (por ejemplo, avances hechos en otro equipo), sobre lo ya enviado.
+  if (t.pull) report.downloaded = applyPull(c, await t.pull(pullCursor(c)));
   return report;
 }
 
@@ -109,6 +117,11 @@ export function httpTransport(baseUrl: string, getToken: () => Promise<string>, 
       const r = await f(url('/v1/sync/push'), { method: 'POST', headers: await headers({ 'content-type': 'application/json' }), body: JSON.stringify(body) });
       if (!r.ok) throw await fail(r);
       return (await r.json()) as { results: OpResult[] };
+    },
+    async pull(since) {
+      const r = await f(url(`/v1/sync/pull?since=${since}`), { headers: await headers() });
+      if (!r.ok) throw await fail(r);
+      return (await r.json()) as PullData;
     },
   };
 }
