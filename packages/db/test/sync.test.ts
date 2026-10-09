@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  addEvidence, clearLink, closeEvaluation, getLink, saveLink, createEvaluation, listConflicts, listRejected, migrate, pendingAudit, pendingSummary, resolveAnswerConflict,
+  addEvidence, applyPull, clearLink, listEvidence, loadEvaluationInput, pullCursor, type PullData, closeEvaluation, getLink, saveLink, createEvaluation, listConflicts, listRejected, migrate, pendingAudit, pendingSummary, resolveAnswerConflict,
   retryRejected, runSync, saveAction, saveAnswer, setDimensionScope, syncState, type Ctx, type Driver, type OpResult, type Param, type PushBody, type SyncTransport,
 } from '@fs/db';
 
@@ -28,6 +28,7 @@ class FakeServer implements SyncTransport {
   pushes: PushBody[] = [];
   version = 100;
   decide: (op: PushBody['ops'][number]) => OpResult | null = () => null;
+  pull?: (since: number) => Promise<PullData>;
   async missingFiles(shas: string[]) { this.calls.push(`missing ${shas.join(',')}`); return shas.filter((x) => !this.files.has(x)); }
   async uploadFile(sha: string, _mime: string, data: Uint8Array) { this.calls.push(`put ${sha}`); this.files.set(sha, data); }
   async push(body: PushBody) {
@@ -59,7 +60,7 @@ describe('runSync', () => {
     saveAnswer(c, ev, 'D01-Q01', { kind: 'score', score: 75 });
     addEvidence(c, { evaluationId: ev, questionId: 'D01-Q01', kind: 'photo', localPath: 'evidence/abc', mime: 'image/jpeg', bytes: 10, sha256: 'abc' });
     const r = await runSync(c, srv, read);
-    expect(r).toEqual({ accepted: 4, rejected: 0, conflicts: 0, filesUploaded: 1, filesFailed: [] });
+    expect(r).toEqual({ accepted: 4, rejected: 0, conflicts: 0, filesUploaded: 1, filesFailed: [], downloaded: 0 });
     expect(srv.calls.slice(0, 3)).toEqual(['missing abc', 'put abc', 'push 4/0']);
     expect(srv.pushes[0]!.ops.map((o) => o.seq)).toEqual([1, 2, 3, 4]);
     expect(pendingSummary(c.db)).toMatchObject({ operations: 0, files: 0 });
@@ -166,5 +167,43 @@ describe('vinculación con el servidor', () => {
     expect(getLink(c.db)).toBeUndefined();
     saveLink(c, { ...link, user_id: 'luis', user_name: 'Luis' });
     expect(getLink(c.db)!.user_id).toBe('luis');
+  });
+});
+
+describe('traer avances de otro equipo', () => {
+  const remote = (over: Partial<PullData> = {}): PullData => ({
+    cursor: 210,
+    evaluations: [{ id: 'ev-pc', model_id: 'V01', company: 'Minera PC', site: null, evaluated_on: '2026-10-08', owner_user_id: 'evaluador',
+      interviewees: ['Ana'], status: 'draft', closed_at: null, row_version: 200, updated_at: '2026-10-08T15:00:00Z' }],
+    scopes: [{ evaluation_id: 'ev-pc', dimension: 'D1', applies: true, justification: null, row_version: 201 }],
+    answers: [{ evaluation_id: 'ev-pc', question_id: 'D01-Q01', score: 50, not_applicable: false, na_justification: null, evidence_note: 'del PC',
+      row_version: 202, updated_by: 'evaluador', updated_at: '2026-10-08T15:01:00Z' }],
+    evidence: [{ id: 'f-pc', evaluation_id: 'ev-pc', question_id: 'D01-Q01', kind: 'photo', mime: 'image/jpeg', bytes: 5, sha256: 'feed',
+      source: null, created_by: 'evaluador', received_at: '2026-10-08T15:02:00Z' }],
+    actions: [],
+    ...over,
+  });
+
+  it('una evaluación iniciada en otro equipo queda lista para continuar aquí', async () => {
+    srv.pull = async () => remote();
+    const r = await runSync(c, srv, read);
+    expect(r.downloaded).toBe(1);
+    expect(pullCursor(c)).toBe(210);
+    const input = loadEvaluationInput(c.db, 'ev-pc');
+    expect(input.answers['D01-Q01']).toMatchObject({ score: 50, evidenceNote: 'del PC', attachments: 1 });
+    expect(listEvidence(c.db, 'ev-pc', 'D01-Q01')[0]!.local_path).toBe('server:feed');
+    // Se sigue respondiendo aquí y el cambio sale sobre la versión del servidor.
+    saveAnswer(c, 'ev-pc', 'D01-Q01', { kind: 'score', score: 75 });
+    await runSync(c, srv, read);
+    const sent = srv.pushes.at(-2)!.ops.find((o) => o.entity === 'answer')!;
+    expect(sent.baseVersion).toBe(202);
+  });
+
+  it('no pisa lo que este equipo aún no envía', () => {
+    applyPull(c, remote());
+    saveAnswer(c, 'ev-pc', 'D01-Q01', { kind: 'score', score: 100 });
+    const n = applyPull(c, remote({ answers: [{ ...remote().answers[0]!, score: 0, row_version: 300 }] }));
+    expect(n).toBe(0);
+    expect(loadEvaluationInput(c.db, 'ev-pc').answers['D01-Q01']!.score).toBe(100);
   });
 });

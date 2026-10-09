@@ -34,8 +34,10 @@ const ADMIN_PW = process.env.ADMIN_PASSWORD || 'clave-admin-e2e';
   // 2. Crea a una evaluadora con clave inicial y pide un código para su tablet.
   await portal.locator('a.nav', { hasText: 'Usuarios y accesos' }).click();
   await portal.getByRole('button', { name: 'Crear usuario' }).click();
-  await portal.fill('#inv-n', 'Ana Pérez');
-  await portal.fill('#inv-u', 'ana.perez');
+  // Se escribe tecla por tecla, como una persona: el cursor no debe saltar de campo.
+  await portal.click('#inv-n'); await portal.keyboard.type('Ana Pérez');
+  await portal.click('#inv-u'); await portal.keyboard.type('ana.perez');
+  ok(await portal.inputValue('#inv-n') === 'Ana Pérez' && await portal.inputValue('#inv-u') === 'ana.perez', 'al escribir, el cursor se queda en el campo');
   const tempPw = await portal.inputValue('#inv-p');
   ok(tempPw.length >= 10, 'el portal propone una clave inicial');
   await portal.locator('[role=dialog]').getByRole('button', { name: 'Crear usuario' }).click();
@@ -67,7 +69,7 @@ const ADMIN_PW = process.env.ADMIN_PASSWORD || 'clave-admin-e2e';
   await tab.getByText('Vinculada a Ana Pérez', { exact: true }).waitFor({ timeout: 10000 });
   ok(true, 'tablet vinculada a Ana');
   await tab.getByRole('button', { name: 'Confirmar y sincronizar' }).click();
-  await tab.getByText('Todo está sincronizado.').waitFor({ timeout: 15000 });
+  await tab.getByText('No hay cambios pendientes en este equipo.').waitFor({ timeout: 15000 });
   ok(true, 'sincronización confirmada');
   await tab.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await tab.waitForTimeout(800);
@@ -75,6 +77,40 @@ const ADMIN_PW = process.env.ADMIN_PASSWORD || 'clave-admin-e2e';
   await tab.locator('.nav', { hasText: 'Sincronizar' }).click().catch(() => {});
   await tab.getByText('Mis evaluaciones').or(tab.getByText('Vinculada a Ana Pérez', { exact: true })).first().waitFor();
   ok(true, 'la vinculación sigue después de recargar');
+
+  // 3b. Ana continúa la misma evaluación en otro equipo (el computador) y vuelve a la tablet.
+  await portal.locator('a.nav', { hasText: 'Usuarios y accesos' }).click();
+  await anaRow.getByRole('button', { name: 'Vincular tablet' }).click();
+  const code2 = (await portal.locator('.paircode').innerText()).trim();
+  await portal.getByRole('button', { name: 'Listo' }).click();
+  const pcCtx = await b.newContext({ viewport: { width: 1340, height: 800 } });
+  const pc = await pcCtx.newPage();
+  watch(pc, ['403', '400']);
+  await pc.goto(APP);
+  await pc.getByText('Mis evaluaciones').waitFor();
+  await pc.locator('.nav', { hasText: 'Sincronizar' }).click();
+  await pc.fill('#pair-url', SERVER.replace(/^http:\/\//, ''));
+  await pc.fill('#pair-code', code2);
+  await pc.getByRole('button', { name: 'Vincular' }).click();
+  await pc.getByText('Vinculada a Ana Pérez', { exact: true }).waitFor({ timeout: 10000 });
+  await pc.getByRole('button', { name: 'Traer avances del servidor' }).click();
+  await pc.getByText(/Llegaron 1 evaluaciones/).waitFor({ timeout: 15000 });
+  await pc.locator('.nav', { hasText: 'Evaluaciones' }).click();
+  const pcRow = pc.locator('.ev', { hasText: 'Minera Local' }).last();
+  await pcRow.getByRole('button', { name: 'Abrir' }).click();
+  await pc.locator('.nav', { hasText: 'Preguntas' }).click();
+  await pc.locator('.opt').nth(3).click();
+  await pc.waitForTimeout(300);
+  ok(await pc.locator('.opt[aria-pressed=true] .sc').innerText() === '75%', 'la evaluación de la tablet se continúa en el computador');
+  await pc.locator('.nav', { hasText: 'Sincronizar' }).click();
+  await pc.getByRole('button', { name: 'Confirmar y sincronizar' }).click();
+  await pc.getByText('No hay cambios pendientes en este equipo.').waitFor({ timeout: 15000 });
+  await tab.locator('.nav', { hasText: 'Sincronizar' }).click();
+  await tab.getByRole('button', { name: 'Traer avances del servidor' }).click();
+  await tab.getByText(/quedaron al día/).waitFor({ timeout: 15000 });
+  await tab.locator('.nav', { hasText: 'Evaluaciones' }).click();
+  const tabRow = tab.locator('.ev', { hasText: 'Minera Local' }).last();
+  ok(await tabRow.innerText().then((t) => /\b1 de \d+ respondidas/.test(t)), 'la tablet trae la respuesta hecha en el computador');
 
   // 4. El administrador ve la evaluación a nombre de Ana y la tablet con su modelo y versión.
   await portal.locator('a.nav', { hasText: 'Evaluaciones' }).click();
@@ -110,10 +146,14 @@ const ADMIN_PW = process.env.ADMIN_PASSWORD || 'clave-admin-e2e';
   // 6. Desvincular la tablet desde el portal corta su acceso.
   await portal.reload();
   await portal.getByRole('heading', { name: 'Tablets' }).waitFor();
-  await portal.locator('.dimtable tbody tr', { hasText: 'Ana Pérez' }).first().getByRole('button').first().click();
-  const dlg = portal.locator('[role=dialog]');
-  if (await dlg.count()) await dlg.getByRole('button').last().click();
-  await portal.waitForTimeout(500);
+  // Ana tiene dos equipos (tablet y computador): se quita el acceso a ambos.
+  for (let i = 0; i < 2; i++) {
+    await portal.locator('.dimtable tbody tr', { hasText: 'Ana Pérez' }).filter({ has: portal.getByRole('button', { name: 'Quitar acceso' }) }).first()
+      .getByRole('button', { name: 'Quitar acceso' }).click();
+    const dlg = portal.locator('[role=dialog]');
+    if (await dlg.count()) await dlg.getByRole('button').last().click();
+    await portal.waitForTimeout(500);
+  }
   await tab.locator('.nav', { hasText: 'Evaluaciones' }).click();
   await tab.getByRole('button', { name: 'Nueva evaluación' }).click();
   await tab.fill('#f-company', 'Minera Dos'); await tab.locator('#f-int').click();

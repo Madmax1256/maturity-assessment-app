@@ -7,14 +7,16 @@ Reglas (sección 7 de la especificación):
   guardado: si una se rechaza, las demás siguen.
 - Solo el propietario modifica su evaluación; una evaluación cerrada es de solo lectura (salvo su
   plan de acción).
-- Conflicto: solo en respuestas, cuando otro dispositivo cambió la misma respuesta después de la
-  versión sobre la que trabajó esta tablet. Cambios seguidos desde la misma tablet nunca chocan
-  entre sí. El servidor no decide: devuelve su versión y el propietario elige en la tablet.
+- Choque: cuando otro equipo (tablet o computador) cambió la misma respuesta después de la versión
+  sobre la que trabajó este. Gana el último cambio enviado (decisión de Max, 2026-10-08, para poder
+  avanzar una evaluación en varios equipos a la vez) y la versión reemplazada queda en la bitácora
+  como answer.overwritten. Cambios seguidos desde el mismo equipo nunca chocan entre sí.
 """
 
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -205,10 +207,12 @@ class Applier:
         note = _text(p.get("evidenceNote"), "la nota de evidencia", max_len=8000)
         cur_row = cur.execute("SELECT * FROM answer WHERE evaluation_id = %s AND question_id = %s FOR UPDATE", (ev["id"], q)).fetchone()
         if cur_row and cur_row["row_version"] != op.base_version and cur_row["last_device_id"] != self.device_id:
-            return {"opId": op.op_id, "status": "conflict", "server": {
-                "score": cur_row["score"], "notApplicable": cur_row["not_applicable"], "naJustification": cur_row["na_justification"],
-                "evidenceNote": cur_row["evidence_note"], "rowVersion": cur_row["row_version"], "updatedBy": cur_row["updated_by"],
-                "updatedAt": cur_row["updated_at"].isoformat()}}
+            cur.execute("""INSERT INTO audit_log (id, at, user_id, device_id, action, entity, entity_key, detail)
+                           VALUES (%s, now(), %s, %s, 'answer.overwritten', 'answer', %s, %s)""",
+                        (f"srv-{uuid.uuid4()}", self.user.id, self.device_id, op.entity_key, Jsonb({"replaced": {
+                            "score": cur_row["score"], "notApplicable": cur_row["not_applicable"], "naJustification": cur_row["na_justification"],
+                            "evidenceNote": cur_row["evidence_note"], "rowVersion": cur_row["row_version"], "deviceId": cur_row["last_device_id"],
+                            "updatedAt": cur_row["updated_at"].isoformat()}})))
         v = _next_version(cur)
         cur.execute("""INSERT INTO answer (evaluation_id, question_id, score, not_applicable, na_justification, evidence_note, row_version, last_device_id, updated_by)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)

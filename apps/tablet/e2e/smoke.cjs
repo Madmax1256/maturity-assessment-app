@@ -59,7 +59,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAAKklEQVR
   ok(ops > 0, `${ops} cambios en cola; nada se envía sin confirmar`);
   if (process.env.SYNC_URL) {
     await page.getByRole('button', { name: 'Confirmar y sincronizar' }).click();
-    await page.getByText('Todo está sincronizado.').waitFor({ timeout: 15000 });
+    await page.getByText('No hay cambios pendientes en este equipo.').waitFor({ timeout: 15000 });
     ok(await page.getByText(/cambios aceptados, 1 archivos subidos\./).count() === 1, 'sincronización confirmada: cambios aceptados y foto subida');
     const h = { authorization: 'Bearer dev:evaluador' };
     const list = await (await fetch(`${process.env.SYNC_URL}/v1/evaluations`, { headers: h })).json();

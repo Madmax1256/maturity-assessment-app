@@ -30,6 +30,7 @@ class Settings:
     auto_enroll_role: str = field(default_factory=lambda: os.environ.get("FS_AUTO_ENROLL_ROLE", ""))
     # Carpeta con el portal compilado (apps/portal/dist). Si existe, el servidor lo publica en "/".
     portal_dir: Path | None = field(default_factory=lambda: Path(p) if (p := os.environ.get("FS_PORTAL_DIR")) else None)
+    tablet_dir: Path | None = field(default_factory=lambda: Path(p) if (p := os.environ.get("FS_TABLET_DIR")) else None)
     # Modo local: carpeta de respaldos automáticos (vacío = sin respaldo automático), cuántos
     # respaldos de la base conservar y, si pg_dump no está en el PATH, la carpeta bin de PostgreSQL.
     backup_dir: Path | None = field(default_factory=lambda: Path(p) if (p := os.environ.get("FS_BACKUP_DIR")) else None)

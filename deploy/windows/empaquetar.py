@@ -1,7 +1,7 @@
 """Arma el zip del instalador para Windows: python3 deploy/windows/empaquetar.py [carpeta_salida]
 
-Requiere el portal compilado sin VITE_API_URL (npm run build:portal), para que use el mismo
-servidor que lo publica. Los scripts de PowerShell se guardan en UTF-8 con BOM y fin de línea
+Requiere el portal y la app de captura compilados sin VITE_API_URL ni VITE_SYNC_URL
+(npm run build:portal y npm run build:tablet), para que usen el mismo servidor que los publica. Los scripts de PowerShell se guardan en UTF-8 con BOM y fin de línea
 CRLF, que es lo que Windows PowerShell 5.1 necesita para leer bien los acentos.
 """
 
@@ -29,6 +29,13 @@ def main() -> int:
     if any("http://localhost:" in p.read_text(encoding="utf-8", errors="ignore") for p in portal.rglob("*.js")):
         print("El portal parece compilado con otra dirección de servidor; compílalo sin VITE_API_URL.", file=sys.stderr)
         return 1
+    tablet = ROOT / "apps" / "tablet" / "dist"
+    if not (tablet / "index.html").is_file():
+        print("Falta la app de captura compilada: npm run build:tablet", file=sys.stderr)
+        return 1
+    if any("http://localhost:" in p.read_text(encoding="utf-8", errors="ignore") for p in tablet.rglob("*.js")):
+        print("La app de captura parece compilada con otra dirección de servidor; compílala sin VITE_SYNC_URL.", file=sys.stderr)
+        return 1
     version = json.loads((ROOT / "apps" / "tablet" / "package.json").read_text())["version"]
     name = f"fs-diagnostico-windows-{version}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -48,6 +55,9 @@ def main() -> int:
     for p in sorted(portal.rglob("*")):
         if p.is_file():
             files[f"app/portal/{p.relative_to(portal).as_posix()}"] = p.read_bytes()
+    for p in sorted(tablet.rglob("*")):
+        if p.is_file():
+            files[f"app/tablet/{p.relative_to(tablet).as_posix()}"] = p.read_bytes()
 
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
         for rel, data in files.items():

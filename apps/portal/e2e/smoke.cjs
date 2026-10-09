@@ -69,7 +69,7 @@ const URL = process.env.PORTAL_URL || 'http://localhost:4174/';
   await page.getByRole('heading', { name: 'Tablets' }).waitFor();
   const tabRow = page.locator('.dimtable tbody tr', { hasText: 'Activa' }).first();
   await tabRow.waitFor({ timeout: 5000 }).catch(() => {});
-  ok(await tabRow.innerText().catch(() => '').then((t) => t.includes('0.5.0')), 'tablets: versión de la app y estado');
+  ok(await tabRow.innerText().catch(() => '').then((t) => t.includes('0.6.1')), 'tablets: versión de la app y estado');
 
   await page.locator('a.nav', { hasText: 'Bitácora' }).click();
   await page.getByRole('heading', { name: 'Bitácora' }).waitFor();

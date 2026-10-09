@@ -109,10 +109,9 @@ jobs:
           for ($i = 0; $i -lt 30 -and -not (Test-Path "$env:RUNNER_TEMP\respaldos\db\*.dump"); $i++) { Start-Sleep 1 }
           if (-not (Test-Path "$env:RUNNER_TEMP\respaldos\db\*.dump")) { Get-Content "$env:LOCALAPPDATA\FS-Diagnostico\logs\servidor.log"; exit 1 }
           Get-ChildItem "$env:RUNNER_TEMP\respaldos\db"
-      - name: Reiniciar con la tablet de prueba permitida
+      - name: Reiniciar el servidor
         run: |
           $d = "$env:LOCALAPPDATA\FS-Diagnostico"
-          Add-Content "$d\config.env" 'FS_CORS_ORIGINS=http://localhost:4173'
           & "$d\detener.ps1"
           Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$d\iniciar.ps1")
           for ($i = 0; $i -lt 60; $i++) { try { if ((Invoke-WebRequest http://127.0.0.1:8000/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { break } } catch { }; Start-Sleep 1 }
@@ -122,9 +121,8 @@ jobs:
         run: |
           npm i --no-save --no-audit --no-fund playwright@1.56.1
           npx playwright install chromium
-          npm run preview -w apps/tablet -- --port 4173 --strictPort &
-          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
-          SERVER_URL=http://127.0.0.1:8000 node e2e/local-mode.cjs
+          # La app de captura la publica el mismo servidor instalado, como la usaría Max sin tablet.
+          SERVER_URL=http://127.0.0.1:8000 APP_URL=http://127.0.0.1:8000/tablet/ node e2e/local-mode.cjs
       - name: Respaldo manual y actualización conservando los datos
         run: |
           $d = "$env:LOCALAPPDATA\FS-Diagnostico"

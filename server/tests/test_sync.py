@@ -6,7 +6,9 @@ import pytest
 
 from app.config import Settings
 from app.auth import Authenticator
-from tests.conftest import Tablet
+import psycopg
+
+from tests.conftest import DB_URL, Tablet
 
 CATALOG = json.loads((Path(__file__).resolve().parents[2] / "packages/model/catalog/v01.json").read_text(encoding="utf-8"))
 QUESTIONS = [(q["id"], q["dimension"]) for q in CATALOG["questions"]]
@@ -62,18 +64,29 @@ def test_consecutive_changes_from_same_tablet_do_not_conflict(client):
     assert client.get(f"/v1/evaluations/{ev}", headers=t.h).json()["answers"][0]["score"] == 100
 
 
-def test_change_from_another_device_is_a_conflict_until_owner_decides(client):
+def test_change_from_another_device_wins_and_keeps_the_replaced_answer_in_the_log(client):
     t1 = Tablet(client, device="tablet-1")
     ev, create = t1.new_eval()
     [_, acc] = t1.push(create, t1.answer(ev, "D01-Q01", 25))
-    t2 = Tablet(client, device="tablet-2")
-    [conf] = t2.push(t2.answer(ev, "D01-Q01", 75, base=None))
-    assert conf["status"] == "conflict"
-    assert conf["server"]["score"] == 25 and conf["server"]["rowVersion"] == acc["rowVersion"]
-    # El propietario mantiene su versión: se reenvía sobre la versión del servidor.
-    [ok] = t2.push(t2.answer(ev, "D01-Q01", 75, base=conf["server"]["rowVersion"]))
+    t2 = Tablet(client, device="pc-1")
+    [ok] = t2.push(t2.answer(ev, "D01-Q01", 75, base=None))
     assert ok["status"] == "accepted"
     assert client.get(f"/v1/evaluations/{ev}", headers=t1.h).json()["answers"][0]["score"] == 75
+    with psycopg.connect(DB_URL) as conn:
+        [(detail,)] = conn.execute("SELECT detail FROM audit_log WHERE action = 'answer.overwritten'").fetchall()
+    assert detail["replaced"]["score"] == 25 and detail["replaced"]["rowVersion"] == acc["rowVersion"]
+
+
+def test_pull_returns_own_evaluations_changed_since_cursor(client):
+    t1 = Tablet(client, device="pc-1")
+    ev, create = t1.new_eval()
+    t1.push(create, t1.answer(ev, "D01-Q01", 50))
+    d = client.get("/v1/sync/pull", headers=t1.h).json()
+    assert [e["id"] for e in d["evaluations"]] == [ev]
+    assert d["answers"][0]["score"] == 50 and d["answers"][0]["row_version"] <= d["cursor"]
+    assert client.get(f"/v1/sync/pull?since={d['cursor']}", headers=t1.h).json()["evaluations"] == []
+    other = Tablet(client, "luis")
+    assert client.get("/v1/sync/pull", headers=other.h).json()["evaluations"] == []
 
 
 def test_only_owner_can_modify(client):
