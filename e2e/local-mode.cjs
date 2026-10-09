@@ -34,8 +34,10 @@ const ADMIN_PW = process.env.ADMIN_PASSWORD || 'clave-admin-e2e';
   // 2. Crea a una evaluadora con clave inicial y pide un código para su tablet.
   await portal.locator('a.nav', { hasText: 'Usuarios y accesos' }).click();
   await portal.getByRole('button', { name: 'Crear usuario' }).click();
-  await portal.fill('#inv-n', 'Ana Pérez');
-  await portal.fill('#inv-u', 'ana.perez');
+  // Se escribe tecla por tecla, como una persona: el cursor no debe saltar de campo.
+  await portal.click('#inv-n'); await portal.keyboard.type('Ana Pérez');
+  await portal.click('#inv-u'); await portal.keyboard.type('ana.perez');
+  ok(await portal.inputValue('#inv-n') === 'Ana Pérez' && await portal.inputValue('#inv-u') === 'ana.perez', 'al escribir, el cursor se queda en el campo');
   const tempPw = await portal.inputValue('#inv-p');
   ok(tempPw.length >= 10, 'el portal propone una clave inicial');
   await portal.locator('[role=dialog]').getByRole('button', { name: 'Crear usuario' }).click();

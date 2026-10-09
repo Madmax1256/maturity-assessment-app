@@ -110,7 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stop.set()
         pool.close()
 
-    app = FastAPI(title="Diagnóstico F&S: sincronización", version="0.6.0", lifespan=lifespan)
+    app = FastAPI(title="Diagnóstico F&S: sincronización", version="0.6.1", lifespan=lifespan)
     # La app de la tablet (Capacitor) llama desde https://localhost; en modo local se permite por omisión.
     origins = s.cors_origins or (["https://localhost", "capacitor://localhost"] if s.auth_mode == "local" else [])
     if origins:
